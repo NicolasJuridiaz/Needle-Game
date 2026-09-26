@@ -56,8 +56,8 @@ export abstract class LogisticsBuilding extends Building implements LaneOwner {
 
   /** Relink hooks: forget link-derived state. */
   resetLinks(): void { /* override */ }
-  /** Relink hook: an out-port of another building faces my cell `cell` from direction `outwardDir` (from me to it). */
-  noteFeeder(_cell: Cell, _outwardDir: Dir): void { /* override */ }
+  /** Relink hook: an out-port of `feeder` faces my cell `cell` from direction `outwardDir` (from me to it). */
+  noteFeeder(_cell: Cell, _outwardDir: Dir, _feeder: Building): void { /* override */ }
   /** Relink hook: a feeder was linked into my input `port`, located in direction `outwardDir` from me. */
   onFeederLinked(_port: number, _outwardDir: Dir): void { /* override */ }
 

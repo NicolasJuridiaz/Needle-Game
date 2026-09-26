@@ -82,7 +82,7 @@ export class Logistics implements ILogistics, LogiHost {
         const n = neighbor(p.cell, dir);
         if (!inGridBounds(n.x, n.z)) continue;
         const t = at.get(cellKey(n.x, n.z, n.level));
-        if (t && t !== b && t instanceof LogisticsBuilding) t.noteFeeder(n, oppositeDir(dir));
+        if (t && t !== b && t instanceof LogisticsBuilding) t.noteFeeder(n, oppositeDir(dir), b);
       }
     }
     // Pass 2: links, one feeder per input port, in building-id order.

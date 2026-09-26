@@ -138,6 +138,24 @@ export class Lane {
     return n === 0 || this.items[n - 1].s - this.spacing(d) >= -ENTRY_EPS;
   }
 
+  /** Is there a gap of at least one spacing on both sides of position `s` (side-loading)? */
+  hasRoomAt(s: number, d: number): boolean {
+    const sp = this.spacing(d);
+    for (let i = 0; i < this.items.length; i++) if (Math.abs(this.items[i].s - s) < sp - ENTRY_EPS) return false;
+    return true;
+  }
+
+  /** Insert `it` at position `s`, keeping head-first order (caller checked {@link hasRoomAt}). */
+  insertAt(it: BeltItem, s: number, tick: number): void {
+    const items = this.items;
+    let i = 0;
+    while (i < items.length && items[i].s > s) i++;
+    items.splice(i, 0, it);
+    it.s = s;
+    it.stamp = tick;
+    this.posAt(s, it);
+  }
+
   /**
    * Append `it` at the entry, `carry` tiles in (clamped by the spacing to the last item).
    * Returns its position or {@link REFUSED}. Marks the item as moved in logistics tick `tick`.

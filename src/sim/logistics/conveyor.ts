@@ -1,8 +1,9 @@
 import { WORLD } from '../../config/world';
-import type { BuildingInfo, BuildingInit } from '../building';
+import type { Building, BuildingInfo, BuildingInit } from '../building';
 import type { SimContext } from '../interfaces';
-import { oppositeDir, rotateDir, type Cell, type Dir } from '../types';
+import { oppositeDir, rotateDir, type Cell, type Dir, type ItemPacket } from '../types';
 import { fmtNum, LogisticsBuilding, type LogiHost } from './base';
+import { acquireItem, hayEq, logiClock } from './items';
 import { Lane } from './lane';
 
 /** Path length (tiles) of a curved belt tile (quarter circle of radius 0.5). */
@@ -58,9 +59,15 @@ abstract class ThroughBuilding extends LogisticsBuilding {
   }
 }
 
+/** Virtual input ports for machines side-loading onto a belt tile (not in the buildable's port list). */
+export const SIDE_LOAD_LEFT = 2;
+export const SIDE_LOAD_RIGHT = 3;
+
 /**
- * Conveyor tile. rot = flow direction. Fed from its back, or (only when nothing feeds its back) from one side:
- * the tile then becomes a curve (anim.curve -1 = fed from local left/-Z, +1 = from local right/+Z).
+ * Conveyor tile. rot = flow direction. Belts feed it from its back, or (only when nothing feeds its back) from
+ * one side: the tile then becomes a curve (anim.curve -1 = fed from local left/-Z, +1 = from local right/+Z).
+ * Machines (arms, rakes, hoppers...) whose output faces a side SIDE-LOAD instead: the item is dropped onto the
+ * middle of the straight belt whenever there is a gap, so several machines can feed one running line.
  */
 export class Conveyor extends ThroughBuilding {
   /** Something's out-port faces this belt's back (set during relink). */
@@ -68,6 +75,8 @@ export class Conveyor extends ThroughBuilding {
   /** Outward direction (from this tile) of the linked feeder, -1 = none. */
   feedDir: Dir | -1 = -1;
   curve: -1 | 0 | 1 = 0;
+  /** Per world direction: a non-belt building's out-port faces this tile from that side (set during relink). */
+  private readonly sideMachine = [false, false, false, false];
 
   constructor(init: BuildingInit) { super(init, 1); }
 
@@ -79,13 +88,31 @@ export class Conveyor extends ThroughBuilding {
     if (!this.ports.some((p) => p.kind === 'in' && p.index === 0)) return -1;
     if (outwardDir === this.backDir) return 0;
     if (outwardDir === this.flowDir) return -1; // head-on: never
+    if (this.sideMachine[outwardDir]) return outwardDir === rotateDir(3, this.rot) ? SIDE_LOAD_LEFT : SIDE_LOAD_RIGHT;
     return this.backFed ? -1 : 0;
   }
 
-  override resetLinks(): void { this.backFed = false; this.feedDir = -1; }
+  override resetLinks(): void { this.backFed = false; this.feedDir = -1; this.sideMachine.fill(false); }
 
-  override noteFeeder(cell: Cell, outwardDir: Dir): void {
-    if (outwardDir === this.backDir && cell.x === this.cell.x && cell.z === this.cell.z && cell.level === this.cell.level) this.backFed = true;
+  override noteFeeder(cell: Cell, outwardDir: Dir, feeder: Building): void {
+    if (cell.x !== this.cell.x || cell.z !== this.cell.z || cell.level !== this.cell.level) return;
+    if (outwardDir === this.backDir) this.backFed = true;
+    else if (outwardDir !== this.flowDir && !(feeder instanceof LogisticsBuilding)) this.sideMachine[outwardDir] = true;
+  }
+
+  private isSideLoad(port: number): boolean { return port === SIDE_LOAD_LEFT || port === SIDE_LOAD_RIGHT; }
+
+  override canAccept(item: ItemPacket, port: number, ctx: SimContext): boolean {
+    if (!this.isSideLoad(port)) return super.canAccept(item, port, ctx);
+    return this.enabled && this.lane.hasRoomAt(this.lane.len * 0.5, ctx.stat('belt.spacing'));
+  }
+
+  override accept(item: ItemPacket, port: number, ctx: SimContext): void {
+    if (!this.isSideLoad(port)) { super.accept(item, port, ctx); return; }
+    const it = acquireItem(item);
+    this.lane.insertAt(it, this.lane.len * 0.5, logiClock.tick);
+    it.px = it.x; it.py = it.y; it.pz = it.z; it.pyaw = it.yaw;
+    this.rateIn.add(hayEq(item));
   }
 
   override onFeederLinked(port: number, outwardDir: Dir): void {

@@ -14,3 +14,4 @@ Prioridades: **P0** impide jugar · **P1** rompe sistema importante · **P2** bu
 | B008 | P1 | Progresión | Generador sin carga no quemaba nada → el Order "Stoke the Fire" (quemar 300 hay) no avanzaba alimentándolo con E, y era el único Order activo → bloqueo de WP. Ahora quema una llama piloto (25 %). | FIXED |
 | B009 | P2 | Render / Pajar | La mitad de las matas de paja se veían marrón oscuro: material `DoubleSide` invierte la normal en caras traseras. Ahora ambas caras en la geometría + `FrontSide`. | FIXED |
 | B010 | P3 | Consola | 404 de `/favicon.ico` en cada carga. Añadido favicon vacío inline. | FIXED |
+| B011 | P1 | Logística | Una cinta recta alimentada por detrás no aceptaba nada por los lados: un Robotic Arm/Rake junto a una línea en marcha no podía soltar en ella (imposible "varios brazos → una cinta", cuello ARMS > BELT del GDD). Añadido side-loading de máquinas (inserta en mitad del tile cuando hay hueco). | FIXED |

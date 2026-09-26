@@ -139,6 +139,41 @@ describe('logistics: belts', () => {
     expect(sim.logistics.isLinked(belts[belts.length - 1], 1)).toBe(true);
   });
 
+  it('machines side-load onto a running belt without curving it, sharing its capacity', () => {
+    const sim = newSim();
+    // A slow back feeder (1 packet/s) and three side feeders facing the belt from the north/south.
+    source(sim, -28, Z, 0);
+    const belts = beltX(sim, -27, -18, Z) as Conveyor[];
+    const sides = [source(sim, -25, Z - 1, 1), source(sim, -23, Z + 1, 3), source(sim, -21, Z - 1, 1)];
+    const out = sink(sim, -17, Z);
+    sim.rebuildTopology();
+    for (const s of sides) expect(sim.logistics.isLinked(s, 0)).toBe(true);
+    expect(belts.every((b) => b.curve === 0)).toBe(true);
+    run(sim, 10);
+    const h0 = out.hay;
+    run(sim, 20);
+    const rate = (out.hay - h0) / 20;
+    // The line is saturated: total delivery is the belt capacity, and every side feeder got items on.
+    expect(rate).toBeGreaterThan(45);
+    expect(rate).toBeLessThan(52.5);
+    for (const s of sides) expect(s.sent).toBeGreaterThan(5);
+  });
+
+  it('side-loading waits for a gap (no overlap) and a lone side-loader feeds an empty belt', () => {
+    const sim = newSim();
+    const belts = beltX(sim, -27, -24, Z) as Conveyor[];
+    const side = source(sim, -26, Z - 1, 1);
+    const out = sink(sim, -23, Z);
+    run(sim, 20);
+    expect(side.sent).toBeGreaterThan(60);
+    expect(out.hay).toBeGreaterThan(500);
+    // spacing is kept everywhere
+    for (const b of belts) {
+      const items = b.lane.items;
+      for (let i = 1; i < items.length; i++) expect(items[i - 1].s - items[i].s).toBeGreaterThan(sim.stat('belt.spacing') - 1e-3);
+    }
+  });
+
   it('backs up when the end is blocked and resumes', () => {
     const sim = newSim();
     const src = source(sim, -28, Z, 0);
