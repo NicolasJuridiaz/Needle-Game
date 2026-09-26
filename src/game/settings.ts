@@ -7,6 +7,7 @@ export interface Settings {
   sensitivity: number;  // 0.2..3 (1 = default)
   invertY: boolean;
   fov: number;          // 60..100
+  /** Render preset (src/render/quality.ts). New players start on 'medium'; a stored choice is kept. */
   quality: 'low' | 'medium' | 'high';
   showFps: boolean;
   /** Toggle vs hold for continuous digging. */
@@ -21,7 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 1,
   invertY: false,
   fov: 75,
-  quality: 'high',
+  quality: 'medium',
   showFps: false,
   holdToDig: true,
 };
@@ -34,6 +35,6 @@ export function sanitizeSettings(s: Partial<Settings> | null | undefined): Setti
   out.musicVolume = clamp(out.musicVolume, 0, 1);
   out.sensitivity = clamp(out.sensitivity, 0.2, 3);
   out.fov = clamp(out.fov, 60, 100);
-  if (!['low', 'medium', 'high'].includes(out.quality)) out.quality = 'high';
+  if (!['low', 'medium', 'high'].includes(out.quality)) out.quality = DEFAULT_SETTINGS.quality;
   return out;
 }

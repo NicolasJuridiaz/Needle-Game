@@ -185,7 +185,7 @@ abstract class StoreMachine extends Machine {
       const flush = this.inputAge > FLUSH_DELAY || this.store.hasBacklog() || inv.needles.length > 1;
       if (type === 'hay' && amt < BALANCE.hayPacketSize - EPS && !flush) break;
       const cost = hayEq(type, amt);
-      if (gate.credit + EPS < cost) break;
+      if (!gate.allows(cost)) break;
       this.probe.type = type; this.probe.amount = amt;
       if (!ctx.logistics.canPushOut(this, port, this.probe)) { gate.blocked = true; break; }
       const p = this.store.takePacket(type, amt);
@@ -316,7 +316,8 @@ abstract class StoreMachine extends Machine {
   protected loadStore(o: Record<string, unknown>): void {
     this.store.load(o.store);
     this.gates.length = 0;
-    if (Array.isArray(o.gates)) for (const c of o.gates) { const g = new RateGate(); g.credit = num(c, 0, 0); this.gates.push(g); }
+    // Credits may be negative (paying back a bale).
+    if (Array.isArray(o.gates)) for (const c of o.gates) { const g = new RateGate(); g.credit = num(c, 0); this.gates.push(g); }
     this.inputAge = num(o.inputAge, 1e9, 0);
     this.outTurn = Math.floor(num(o.outTurn, 0, 0));
   }

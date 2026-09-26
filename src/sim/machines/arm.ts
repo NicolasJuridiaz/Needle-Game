@@ -101,7 +101,7 @@ export class RoboticArm extends Machine {
     for (let guard = 0; guard < 8 && t > 0; guard++) {
       if (this.state === S_IDLE) {
         this.anim.grip = approach(this.anim.grip, 0, dt, GRIP_TAU);
-        if (this.retry > 0) { this.retry -= dt; break; }
+        if (this.retry > 0) { this.retry = Math.max(0, this.retry - dt); break; }
         if (!this.pickTarget(ctx)) { this.noHay = true; this.retry = RETRY_INTERVAL; break; }
         this.noHay = false;
         continue;

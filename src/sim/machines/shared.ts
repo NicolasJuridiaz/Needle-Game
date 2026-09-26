@@ -12,6 +12,11 @@ import { DIR_DX, DIR_DZ, type ItemPacket, type ItemType, type Vec3, type WorldPo
  */
 
 export const EPS = 1e-6;
+/**
+ * A store filled from the hay field counts as full within this many hay units: extraction works on float32
+ * heights, so a scoop sized to the free space can land ~1e-5 short of it (and a smaller scoop removes nothing).
+ */
+export const FILL_EPS = 1e-3;
 const TWO_PI = Math.PI * 2;
 
 /** Seconds a machine must fail to push before its status turns to 'outputBlocked' (avoids flicker on belt spacing waits). */
@@ -135,8 +140,16 @@ export function takeHay(inv: Inventory, n: number, needlesOut: number[]): number
   return r;
 }
 
-/** Rate limiter for a machine output (hay-equivalent credits). */
+/** Burst allowance of a {@link RateGate} (hay-eq): one full hay packet. */
+const GATE_BURST = BALANCE.hayPacketSize * BALANCE.hayEquivalent.hay;
+
+/**
+ * Rate limiter for a machine output (hay-equivalent credits). A packet heavier than the burst allowance
+ * (a bale is worth 40 hay-eq) may leave once the credit is full; the gate then runs into debt, so the
+ * average rate still holds and such packets are never stuck.
+ */
 export class RateGate {
+  /** Hay-eq credit; negative while paying back a heavy packet. */
   credit = 0;
   /** True when the last push attempt found a ready packet but the output refused it. */
   blocked = false;
@@ -146,9 +159,12 @@ export class RateGate {
   /** Adds `rate*dt` hay-eq of credit, keeping at most one full hay packet of burst. */
   refill(rate: number, dt: number): void {
     const add = Math.max(0, rate * dt);
-    const cap = BALANCE.hayPacketSize * BALANCE.hayEquivalent.hay + add;
+    const cap = GATE_BURST + add;
     this.credit = Math.min(this.credit + add, cap);
   }
+
+  /** May a packet worth `cost` hay-eq leave now? (Then subtract `cost` from `credit`.) */
+  allows(cost: number): boolean { return this.credit + EPS >= Math.min(cost, GATE_BURST); }
 
   /** Update the blocked timer after this tick's push attempts. */
   settle(dt: number): void { this.blockedFor = this.blocked ? this.blockedFor + dt : 0; }
@@ -411,7 +427,7 @@ export abstract class Machine extends Building {
       if (amt <= EPS) break;
       if (type === 'hay' && amt < BALANCE.hayPacketSize - EPS && !flush && inv.needles.length <= 1) break;
       const cost = hayEq(type, amt);
-      if (gate.credit + EPS < cost) break;
+      if (!gate.allows(cost)) break;
       this.probe.type = type; this.probe.amount = amt;
       if (!ctx.logistics.canPushOut(this, port, this.probe)) { gate.blocked = true; break; }
       const p = inv.takePacket(type, amt);

@@ -1,14 +1,24 @@
 import * as THREE from 'three';
-import { qualityProfile, type Quality } from './quality';
+import { effectivePixelRatio, qualityProfile, type Quality } from './quality';
 
 export interface RenderStats { drawCalls: number; triangles: number }
 
+/** Canvas resolution actually in use (debug overlay / QA). */
+export interface RenderResolution { cssWidth: number; cssHeight: number; pixelRatio: number; bufferWidth: number; bufferHeight: number }
+
+function devicePixelRatio(): number {
+  return typeof window !== 'undefined' && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+}
+
 /**
  * Owns the WebGL renderer, the main scene and the first-person camera.
- * - sRGB output, ACES filmic tone mapping, pixel ratio and shadow filtering by quality.
+ * - sRGB output, ACES filmic tone mapping, shadow filtering by quality.
+ * - Pixel ratio = min(devicePixelRatio, quality cap) further limited by the quality's pixel budget
+ *   (see `effectivePixelRatio`), re-evaluated on every resize and devicePixelRatio change (zoom, monitor).
  * - A soft image-based "warehouse" environment (PMREM) so metals and plastics read well everywhere.
  * - Optional overlay pass (first-person viewmodels) rendered after clearing depth.
- * MSAA is fixed when the renderer is created (WebGL limitation); `setQuality` changes everything else.
+ * MSAA is fixed when the WebGL context is created (WebGL limitation): `needsReloadFor` tells the settings UI;
+ * `setQuality` changes everything else live.
  */
 export class Renderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -17,18 +27,22 @@ export class Renderer {
   readonly container: HTMLElement;
 
   private quality: Quality;
+  /** MSAA state of the WebGL context (cannot change without a new context). */
+  readonly antialias: boolean;
   private overlayScene: THREE.Scene | null = null;
   private overlayCamera: THREE.Camera | null = null;
   private envTarget: THREE.WebGLRenderTarget | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private readonly statsOut: RenderStats = { drawCalls: 0, triangles: 0 };
-  private width = 1;
-  private height = 1;
+  private width = 0;
+  private height = 0;
+  private dprQuery: MediaQueryList | null = null;
 
   constructor(container: HTMLElement, quality: Quality) {
     this.container = container;
     this.quality = quality;
     const prof = qualityProfile(quality);
+    this.antialias = prof.antialias;
     this.renderer = new THREE.WebGLRenderer({
       antialias: prof.antialias,
       powerPreference: 'high-performance',
@@ -51,13 +65,14 @@ export class Renderer {
     this.camera.position.set(0, 1.7, 0);
     this.scene.add(this.camera);
 
-    this.applyQuality(prof.pixelRatio, prof.shadows);
+    this.applyShadows(prof.shadows);
     this.buildEnvironmentMap();
-    this.resize();
+    this.resize(true);
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObserver = new ResizeObserver(() => this.resize());
       this.resizeObserver.observe(container);
     }
+    this.watchDevicePixelRatio();
   }
 
   get domElement(): HTMLCanvasElement { return this.renderer.domElement; }
@@ -69,16 +84,33 @@ export class Renderer {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Match the canvas to the container size (also done automatically through a ResizeObserver). */
-  resize(): void {
-    const w = Math.max(1, this.container.clientWidth || window.innerWidth);
-    const h = Math.max(1, this.container.clientHeight || window.innerHeight);
-    if (w === this.width && h === this.height) return;
+  /**
+   * Match the canvas to the container size and the current devicePixelRatio (also done automatically
+   * through a ResizeObserver and a devicePixelRatio media query). `force` re-applies the pixel ratio.
+   */
+  resize(force = false): void {
+    const w = Math.max(1, this.container.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 1));
+    const h = Math.max(1, this.container.clientHeight || (typeof window !== 'undefined' ? window.innerHeight : 1));
+    const pr = effectivePixelRatio(devicePixelRatio(), w, h, qualityProfile(this.quality));
+    const r = this.renderer;
+    if (!force && w === this.width && h === this.height && pr === r.getPixelRatio()) return;
     this.width = w;
     this.height = h;
-    this.renderer.setSize(w, h, false);
+    if (pr !== r.getPixelRatio()) r.setPixelRatio(pr);
+    r.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+  }
+
+  /** Canvas size and pixel ratio in use. */
+  resolution(): RenderResolution {
+    const c = this.renderer.domElement;
+    return { cssWidth: this.width, cssHeight: this.height, pixelRatio: this.renderer.getPixelRatio(), bufferWidth: c.width, bufferHeight: c.height };
+  }
+
+  /** True when switching to `q` only fully applies after a page reload (MSAA differs from the context's). */
+  needsReloadFor(q: Quality): boolean {
+    return qualityProfile(q).antialias !== this.antialias;
   }
 
   setQuality(q: Quality): void {
@@ -86,7 +118,8 @@ export class Renderer {
     this.quality = q;
     const prof = qualityProfile(q);
     const shadowsChanged = this.renderer.shadowMap.enabled !== prof.shadows;
-    this.applyQuality(prof.pixelRatio, prof.shadows);
+    this.applyShadows(prof.shadows);
+    this.resize(true);
     if (shadowsChanged) {
       // Shadow receivers compile different programs; force a rebuild of every material once.
       this.scene.traverse((o) => {
@@ -124,20 +157,37 @@ export class Renderer {
 
   dispose(): void {
     this.resizeObserver?.disconnect();
+    this.dprQuery?.removeEventListener?.('change', this.onDprChange);
+    this.dprQuery = null;
     this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost, false);
     this.envTarget?.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
 
-  private applyQuality(pixelRatio: number, shadows: boolean): void {
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    this.renderer.setPixelRatio(Math.min(dpr, pixelRatio));
+  private applyShadows(shadows: boolean): void {
     this.renderer.shadowMap.enabled = shadows;
     this.renderer.shadowMap.needsUpdate = true;
-    // setPixelRatio resizes the drawing buffer from the cached CSS size.
-    if (this.width > 1 || this.height > 1) this.renderer.setSize(this.width, this.height, false);
   }
+
+  /** Browser zoom and moving the window to another monitor change devicePixelRatio without a resize. */
+  private watchDevicePixelRatio(): void {
+    this.dprQuery?.removeEventListener?.('change', this.onDprChange);
+    this.dprQuery = null;
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    try {
+      const q = window.matchMedia(`(resolution: ${devicePixelRatio()}dppx)`);
+      q.addEventListener?.('change', this.onDprChange);
+      this.dprQuery = q;
+    } catch {
+      // Old browsers: window resize events still cover zoom changes.
+    }
+  }
+
+  private readonly onDprChange = (): void => {
+    this.watchDevicePixelRatio();
+    this.resize(true);
+  };
 
   /**
    * Pre-filtered radiance for image-based lighting: warm interior gradient with bright skylight strips

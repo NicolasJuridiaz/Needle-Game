@@ -359,6 +359,28 @@ export class Progression implements IProgression {
     this.stableFullSum = 0;
   }
 
+  /** Window buckets oldest -> newest (the last one is the bucket being filled). */
+  private saveStableWindow(): number[] {
+    const b = this.stableBuckets;
+    const out: number[] = [];
+    for (let k = 1; k <= b.length; k++) out.push(b[(this.stableHead + k) % b.length]);
+    return out;
+  }
+
+  /** Restores a saved window (a save without one, or of another resolution, starts empty). */
+  private loadStableWindow(buckets: unknown, elapsed: unknown): void {
+    this.resetStableWindow();
+    const b = this.stableBuckets;
+    if (!Array.isArray(buckets) || buckets.length !== b.length) return;
+    for (let i = 0; i < b.length; i++) b[i] = Math.max(0, finiteOr(buckets[i], 0));
+    this.stableHead = b.length - 1;
+    const bucketLen = BALANCE.stableWindow / STABLE_BUCKETS;
+    this.stableBucketElapsed = Math.min(Math.max(0, finiteOr(elapsed, 0)), bucketLen);
+    let sum = 0;
+    for (let i = 0; i < b.length; i++) if (i !== this.stableHead) sum += b[i];
+    this.stableFullSum = sum;
+  }
+
   // ===================================================================================
   // Needles
   // ===================================================================================
@@ -582,6 +604,8 @@ export class Progression implements IProgression {
       orders,
       milestones: [...this.milestonesDone],
       flags: [...this.flags],
+      stableBuckets: this.saveStableWindow(),
+      stableElapsed: this.stableBucketElapsed,
     };
   }
 
@@ -628,7 +652,7 @@ export class Progression implements IProgression {
     this.flags.clear();
     for (const f of s.flags ?? []) if (typeof f === 'string') this.flags.add(f);
 
-    this.resetStableWindow();
+    this.loadStableWindow(s.stableBuckets, s.stableElapsed);
     this.clock = 0;
     this.invalidateStats();
   }

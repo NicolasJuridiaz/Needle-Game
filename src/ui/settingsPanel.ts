@@ -11,6 +11,19 @@ interface ToggleDef { key: BoolKey; label: string; desc?: string }
 
 const QUALITY: Settings['quality'][] = ['low', 'medium', 'high'];
 const QUALITY_LABEL: Record<Settings['quality'], string> = { low: 'Low', medium: 'Medium', high: 'High' };
+const QUALITY_DESC: Record<Settings['quality'], string> = {
+  low: 'Fastest: no shadows, fewer effects',
+  medium: 'Balanced (recommended)',
+  high: 'Sharpest: anti-aliasing, finer shadows',
+};
+const RELOAD_NOTE = 'Anti-aliasing changes after a page reload';
+
+/**
+ * Optional capability of the context (implemented by Game): the chosen quality needs a page reload to
+ * fully apply (MSAA is fixed when the WebGL context is created). Everything else applies live.
+ */
+interface GraphicsReloadInfo { graphicsReloadRequired?(): boolean }
+type UIContextLike = PartEnv['ctx'] & GraphicsReloadInfo;
 /** Minimum interval (ms) between live updates while a slider is dragged (settings are persisted on each). */
 const LIVE_INTERVAL = 120;
 
@@ -23,6 +36,7 @@ export class SettingsPanel {
   private readonly sliders: { def: SliderDef; input: HTMLInputElement; out: HTMLElement; wrap: HTMLElement; last: number }[] = [];
   private readonly toggles: { def: ToggleDef; btn: HTMLButtonElement }[] = [];
   private readonly quality: HTMLButtonElement[] = [];
+  private qualityDesc!: HTMLElement;
 
   constructor(private readonly env: PartEnv, parent: HTMLElement) {
     this.el = h('div', 'pn-settings', parent);
@@ -40,7 +54,8 @@ export class SettingsPanel {
     const display = this.group('Display');
     this.slider(display, { key: 'fov', label: 'Field of view', min: 60, max: 100, step: 1, fmt: (v) => `${Math.round(v)}°` });
     const row = h('div', 'pn-set-row', display);
-    h('span', 'pn-set-label', row, 'Graphics quality');
+    const qLabel = h('span', 'pn-set-label', row, 'Graphics quality');
+    this.qualityDesc = h('small', 'pn-set-desc', qLabel);
     const seg = h('div', 'pn-seg', row);
     for (const q of QUALITY) {
       const b = h('button', 'pn-seg-btn', seg, QUALITY_LABEL[q]);
@@ -118,5 +133,9 @@ export class SettingsPanel {
       t.btn.setAttribute('aria-checked', on ? 'true' : 'false');
     }
     QUALITY.forEach((q, i) => this.quality[i].classList.toggle('is-active', s.quality === q));
+    const reload = (this.env.ctx as UIContextLike).graphicsReloadRequired?.() === true;
+    this.qualityDesc.textContent = reload ? RELOAD_NOTE : QUALITY_DESC[s.quality] ?? '';
+    // Highlighted (hay accent) while a reload is pending; styles.css has no dedicated class for it.
+    this.qualityDesc.style.color = reload ? 'var(--hay)' : '';
   }
 }

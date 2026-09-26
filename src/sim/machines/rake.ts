@@ -5,7 +5,7 @@ import { Inventory } from '../inventory';
 import { DIR_DX, DIR_DZ } from '../types';
 import { playerTakesHay, takeHayOption } from './playerTransfer';
 import {
-  EPS, ease, fmtInt, fmtNum, fmtRate, loadInventory, Machine, needlesPickedUp, num, obj, packetAmount, RateGate,
+  EPS, ease, FILL_EPS, fmtInt, fmtNum, fmtRate, loadInventory, Machine, needlesPickedUp, num, obj, packetAmount, RateGate,
   returnStrandedNeedles,
 } from './shared';
 
@@ -65,17 +65,17 @@ export class PistonRake extends Machine {
     if (this.powerGate(ctx)) {
       const sf = this.speedFactor(ctx);
       this.unload(ctx, dt, sf);
-      if (!this.cycling && cap - this.tray.hay > EPS) { this.cycling = true; this.phase = 0; this.dumped = false; }
+      if (!this.cycling && cap - this.tray.hay > FILL_EPS) { this.cycling = true; this.phase = 0; this.dumped = false; }
       if (this.cycling) {
         this.phase += (dt * sf) / Math.max(0.05, ctx.stat('rake.cycleTime'));
         if (!this.dumped && this.phase >= RAKE_END) { this.dumped = true; this.dump(ctx, cap, maxReach); }
         if (this.phase >= 1) {
           this.phase -= 1;
           this.dumped = false;
-          if (cap - this.tray.hay <= EPS) { this.cycling = false; this.phase = 0; }
+          if (cap - this.tray.hay <= FILL_EPS) { this.cycling = false; this.phase = 0; }
         }
       }
-      if (!this.cycling && cap - this.tray.hay <= EPS) this.setStatus('outputBlocked', ctx);
+      if (!this.cycling && cap - this.tray.hay <= FILL_EPS) this.setStatus('outputBlocked', ctx);
       else if (this.emptyCycles >= EMPTY_CYCLES_FOR_NO_HAY) this.setStatus('noHay', ctx);
       else this.setWorking(ctx);
     } else {
@@ -94,7 +94,7 @@ export class PistonRake extends Machine {
 
   private dump(ctx: SimContext, cap: number, maxReach: number): void {
     const maxUnits = Math.min(ctx.stat('rake.push'), cap - this.tray.hay);
-    if (maxUnits <= EPS) return;
+    if (maxUnits <= FILL_EPS) return;
     const ex = ctx.hay.extractStrip(this.frontX(), this.frontZ(), this.fx, this.fz, ctx.stat('rake.width'), maxReach, maxUnits);
     if (ex.needles.length) { this.tray.add('hay', 0, ex.needles); needlesPickedUp(ctx, ex.needles, this); }
     if (ex.units > EPS) {
@@ -196,7 +196,7 @@ export class PistonRake extends Machine {
     const cap = ctx.stat('rake.trayCapacity');
     lines.push({ label: 'Raking', value: fmtRate(this.rateIn.value) });
     lines.push({ label: 'Output', value: fmtRate(this.rateOut.value) });
-    lines.push({ label: 'Tray', value: `${fmtInt(this.tray.hay)} / ${fmtInt(cap)}`, tone: this.tray.hay >= cap - EPS ? 'warn' : undefined });
+    lines.push({ label: 'Tray', value: `${fmtInt(this.tray.hay)} / ${fmtInt(cap)}`, tone: this.tray.hay >= cap - FILL_EPS ? 'warn' : undefined });
     lines.push({ label: 'Cycle', value: `${fmtNum(ctx.stat('rake.cycleTime'))} s, up to ${fmtInt(ctx.stat('rake.push'))} hay` });
   }
 
@@ -214,7 +214,7 @@ export class PistonRake extends Machine {
     const o = obj(s);
     this.tray.clear();
     loadInventory(o.tray).moveAllTo(this.tray);
-    this.phase = Math.min(0.999, num(o.phase, 0, 0));
+    this.phase = Math.min(1, num(o.phase, 0, 0)); // a saved phase is < 1; 1 just completes the cycle next tick
     this.cycling = o.cycling === true;
     this.dumped = o.dumped === true;
     this.emptyCycles = Math.floor(num(o.emptyCycles, 0, 0));

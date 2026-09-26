@@ -295,7 +295,7 @@ abstract class Scanner extends Machine {
       l.clear();
       l.input.load(s.input);
       l.output.load(s.output);
-      l.timer = Math.min(0.999, num(s.timer, 0, 0));
+      l.timer = Math.min(1, num(s.timer, 0, 0)); // a saved timer is < 1; 1 just scans on the next tick
       l.parity = s.parity === 1 ? 1 : 0;
     }
     this.alarm = num(o.alarm, 0, 0);

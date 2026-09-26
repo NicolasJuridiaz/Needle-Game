@@ -1,3 +1,5 @@
+import { DiagnosticLog } from './log';
+import type { ProgressSink } from './progress';
 import type { CrazyGameSettings, CrazyGamesSDK, CrazySettingsListener } from './sdk';
 import { PlatformStorage, type Storage } from './storage';
 
@@ -13,6 +15,12 @@ function win(): Window | undefined {
   return typeof window === 'undefined' ? undefined : window;
 }
 
+/** Clamp + round a completion percentage; null for non-numbers. */
+function toPercent(pct: number): number | null {
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return null;
+  return Math.max(0, Math.min(100, Math.round(pct)));
+}
+
 function nowMs(): number {
   return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
 }
@@ -20,21 +28,24 @@ function nowMs(): number {
 /**
  * CrazyGames HTML5 SDK v3 wrapper. Uses only documented APIs, every call is guarded, and when the SDK is
  * unavailable (not loaded, blocked, init failure/timeout, 'disabled' environment) all calls become no-ops
- * and storage uses localStorage.
+ * and storage uses localStorage. Nothing here ever throws into the game, and a broken SDK prints at most
+ * one console notice per page (see DiagnosticLog; the rest is kept in `diagnostics`).
  */
-export class Platform {
+export class Platform implements ProgressSink {
   readonly storage: Storage;
   /** Why the SDK is not active (null when it is), for diagnostics. */
   initError: string | null = null;
 
-  private readonly store = new PlatformStorage();
+  private readonly log = new DiagnosticLog();
+  private readonly store = new PlatformStorage(this.log);
   private sdk: CrazyGamesSDK | null = null;
   private environment: PlatformEnv = 'disabled';
   private initPromise: Promise<void> | null = null;
   private inGameplay = false;
   private inLoading = false;
   private muted = false;
-  private lastProgress = -1;
+  /** Highest completion reported for the current run (-1 = none yet). */
+  private runProgress = -1;
   private lastHappytime = -Infinity;
   private touchOnly: boolean | null = null;
   private readonly muteListeners: ((muted: boolean) => void)[] = [];
@@ -48,6 +59,8 @@ export class Platform {
   get isMuted(): boolean { return this.muted; }
   /** True when the real SDK is active (environment 'crazygames' or 'local'). */
   get sdkActive(): boolean { return this.sdk !== null; }
+  /** Recorded platform / storage notices (only the first one is printed to the console). */
+  get diagnostics(): readonly string[] { return this.log.entries; }
 
   /** Initialise the SDK. Never throws, resolves within SDK_INIT_TIMEOUT_MS. Safe to call repeatedly. */
   init(): Promise<void> {
@@ -56,7 +69,8 @@ export class Platform {
   }
 
   private async doInit(): Promise<void> {
-    const sdk = win()?.CrazyGames?.SDK;
+    let sdk: CrazyGamesSDK | undefined;
+    try { sdk = win()?.CrazyGames?.SDK; } catch { sdk = undefined; }
     if (!sdk || typeof sdk.init !== 'function') {
       this.fallback('SDK script not loaded');
       return;
@@ -90,12 +104,14 @@ export class Platform {
       if (settings) this.muted = !!settings.muteAudio;
       sdk.game?.addSettingsChangeListener?.(this.settingsListener);
     } catch (err) {
-      console.warn('[platform] could not read SDK settings', err);
+      this.log.warn('[platform] could not read SDK settings', err);
     }
     try {
-      if (sdk.data && typeof sdk.data.getItem === 'function') this.store.useSdkData(sdk.data);
+      const data = sdk.data;
+      if (data) this.store.useSdkData(data);
+      else this.log.warn('[platform] SDK data module missing, using localStorage');
     } catch (err) {
-      console.warn('[platform] SDK data module unavailable, using localStorage', err);
+      this.log.warn('[platform] SDK data module unavailable, using localStorage', err);
     }
   }
 
@@ -103,7 +119,7 @@ export class Platform {
     this.sdk = null;
     this.environment = 'disabled';
     this.initError = reason;
-    console.info(`[platform] CrazyGames SDK inactive (${reason}); running standalone`);
+    this.log.info(`[platform] CrazyGames SDK inactive (${reason}); running standalone`);
   }
 
   private applySettings(s: CrazyGameSettings | undefined): void {
@@ -115,11 +131,11 @@ export class Platform {
     }
   }
 
-  /** Runs an SDK call; failures are logged, never thrown. */
+  /** Runs an SDK call; failures are recorded (first one printed), never thrown. */
   private call(name: string, fn: (sdk: CrazyGamesSDK) => void): void {
     const sdk = this.sdk;
     if (!sdk) return;
-    try { fn(sdk); } catch (err) { console.warn(`[platform] SDK ${name} failed`, err); }
+    try { fn(sdk); } catch (err) { this.log.warn(`[platform] SDK ${name} failed`, err); }
   }
 
   loadingStart(): void {
@@ -156,12 +172,31 @@ export class Platform {
     this.call('happytime', (s) => s.game.happytime());
   }
 
-  /** Completion percentage 0..100 (needles × 100 / 6). Only changes are forwarded. */
+  /**
+   * Start of a run (new game -> 0, loaded save -> its real progress): always reported, and it resets the
+   * run's high-water mark (a New Run after a completed one legitimately goes back to 0).
+   */
+  startRun(pct: number): void {
+    const p = toPercent(pct) ?? 0;
+    this.runProgress = p;
+    this.sendProgress(p);
+  }
+
+  /**
+   * Completion percentage 0..100 within the current run (see `completionPercent`). Rounded and clamped;
+   * only increases are forwarded, so 'keep playing' after completion never reports less than 100.
+   */
   reportProgress(pct: number): void {
-    if (!Number.isFinite(pct)) return;
-    const p = Math.max(0, Math.min(100, Math.round(pct)));
-    if (p === this.lastProgress) return;
-    this.lastProgress = p;
+    const p = toPercent(pct);
+    if (p === null || p <= this.runProgress) return;
+    this.runProgress = p;
+    this.sendProgress(p);
+  }
+
+  /** Last completion percentage reported for this run (-1 before the first report). */
+  get reportedProgress(): number { return this.runProgress; }
+
+  private sendProgress(p: number): void {
     this.call('reportGameCompletedPercentage', (s) => {
       if (typeof s.game.reportGameCompletedPercentage === 'function') s.game.reportGameCompletedPercentage(p);
     });

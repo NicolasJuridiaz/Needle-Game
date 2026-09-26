@@ -318,7 +318,8 @@ export class Environment {
   private readonly motes: THREE.Points;
   private readonly moteMat: THREE.ShaderMaterial;
   private readonly moteCapacity: number;
-  private readonly floorTex: THREE.CanvasTexture;
+  private floorTex: THREE.CanvasTexture;
+  private floorMat!: THREE.MeshStandardMaterial;
 
   private readonly boardCanvas: HTMLCanvasElement;
   private readonly boardTex: THREE.CanvasTexture;
@@ -364,6 +365,8 @@ export class Environment {
     this.buildShell(rng, skylights);
     const signs = createSignAtlas();
     this.own(signs);
+    // One atlas for wall signs and the needle-case plaques (it used to be generated and uploaded twice).
+    this.signAtlasTex = signs;
     const signMat = new THREE.MeshStandardMaterial({ map: signs, roughness: 0.75, metalness: 0, transparent: true, alphaTest: 0.05 });
     this.own(signMat);
     this.buildStructureAndProps(rng, skylights, signMat);
@@ -543,10 +546,12 @@ export class Environment {
     return (now - this.clockStart) / 1000;
   }
 
+  /** Everything here applies live (settings panel), including the floor texture resolution. */
   private applyQuality(prof: ReturnType<typeof qualityProfile>): void {
     const sh = this.sun.shadow;
     this.sun.castShadow = prof.shadows;
-    if (sh.mapSize.x !== prof.shadowMapSize) {
+    if (sh.mapSize.x !== prof.shadowMapSize || (!prof.shadows && sh.map)) {
+      // A new size needs a new map; with shadows off the depth texture is just wasted memory.
       sh.mapSize.set(prof.shadowMapSize, prof.shadowMapSize);
       if (sh.map) { sh.map.dispose(); sh.map = null; }
     }
@@ -559,8 +564,17 @@ export class Environment {
     const motes = Math.min(this.moteCapacity, prof.motes);
     this.motes.geometry.setDrawRange(0, motes);
     this.motes.visible = motes > 0;
-    this.floorTex.anisotropy = prof.anisotropy;
-    this.floorTex.needsUpdate = true;
+    if ((this.floorTex.image as { width?: number } | undefined)?.width !== prof.floorTexture) {
+      const old = this.floorTex;
+      this.floorTex = createFloorTexture(prof.floorTexture, prof.anisotropy);
+      this.floorMat.map = this.floorTex;
+      const i = this.owned.indexOf(old);
+      if (i >= 0) this.owned[i] = this.floorTex; else this.own(this.floorTex);
+      old.dispose();
+    } else if (this.floorTex.anisotropy !== prof.anisotropy) {
+      this.floorTex.anisotropy = prof.anisotropy;
+      this.floorTex.needsUpdate = true;
+    }
   }
 
   private setupSun(): void {
@@ -624,6 +638,7 @@ export class Environment {
     };
     mat.customProgramCacheKey = () => 'pn-floor-v1';
     this.own(mat);
+    this.floorMat = mat;
     const R = FLOOR_RECT;
     const geo = this.own(new THREE.PlaneGeometry(R.maxX - R.minX, R.maxZ - R.minZ).rotateX(-Math.PI / 2));
     const floor = new THREE.Mesh(geo, mat);

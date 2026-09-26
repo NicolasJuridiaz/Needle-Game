@@ -32,6 +32,11 @@ const WHEELBARROW_WALL_MARGIN = 0.75;
 /** Minimum time (s) between two `player:full` events. */
 const FULL_EVENT_INTERVAL = 1;
 const EPS = 1e-6;
+/**
+ * The carry counts as full within this many hay units: digging works on float32 hay heights, so a scoop sized
+ * to the free room lands ~1e-5 short of it and a smaller scoop removes nothing (the player would never be told).
+ */
+const FULL_EPS = 1e-3;
 
 interface DigStatKeys { dig: string; interval: string; radius: string }
 
@@ -77,7 +82,7 @@ function extractToPlayer(
   const barrow = overflowBarrow(sim);
   const barrowFree = barrow ? Math.max(0, sim.stat('wheelbarrow.capacity') - barrow.inv.weight()) : 0;
   const room = carryFree + barrowFree;
-  if (room <= EPS) {
+  if (room <= FULL_EPS) {
     notifyFull(sim);
     return { amount: 0, full: true, needleFound: -1, toBarrow: 0 };
   }
@@ -99,7 +104,7 @@ function extractToPlayer(
   }
 
   sim.creditExtraction(units, source, ex.pos);
-  const full = room - units <= EPS;
+  const full = room - units <= FULL_EPS;
   sim.events.emit('player:dig', { tool, amount: units, pos: { x: ex.pos.x, y: ex.pos.y, z: ex.pos.z }, full });
   return { amount: units, full, needleFound, toBarrow };
 }

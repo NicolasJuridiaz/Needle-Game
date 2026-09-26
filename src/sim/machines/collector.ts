@@ -3,7 +3,7 @@ import type { SimContext } from '../interfaces';
 import { Inventory } from '../inventory';
 import { playerTakesHay, takeHayOption } from './playerTransfer';
 import {
-  approach, EPS, fmtInt, fmtNum, fmtRate, loadInventory, localYaw, Machine, nearestAngle, needlesPickedUp, num, obj,
+  approach, EPS, FILL_EPS, fmtInt, fmtNum, fmtRate, loadInventory, localYaw, Machine, nearestAngle, needlesPickedUp, num, obj,
   RateGate, returnStrandedNeedles,
 } from './shared';
 
@@ -74,12 +74,12 @@ export class VacuumCollector extends Machine {
       this.gate.settle(dt);
 
       const free = cap - this.buffer.hay;
-      this.retarget -= dt;
-      if (free > EPS && (this.retarget <= 0 || (!this.hasTarget && !this.noHay))) {
+      this.retarget = Math.max(0, this.retarget - dt); // <= 0 means "look for a spot now"
+      if (free > FILL_EPS && (this.retarget <= 0 || (!this.hasTarget && !this.noHay))) {
         this.retarget = RETARGET_INTERVAL;
         this.findSpot(ctx);
       }
-      if (free > EPS && this.hasTarget) {
+      if (free > FILL_EPS && this.hasTarget) {
         wanted = Math.min(ctx.stat('collector.rate') * sf * dt, free);
         const ex = ctx.hay.extractRadius(this.tx, this.tz, NOZZLE_RADIUS, wanted);
         if (ex.needles.length) { this.buffer.add('hay', 0, ex.needles); needlesPickedUp(ctx, ex.needles, this); }
@@ -95,7 +95,7 @@ export class VacuumCollector extends Machine {
       }
       this.idleFor = sucked > EPS ? 0 : this.idleFor + dt;
 
-      if (cap - this.buffer.hay <= EPS) this.setStatus('outputBlocked', ctx);
+      if (cap - this.buffer.hay <= FILL_EPS) this.setStatus('outputBlocked', ctx);
       else if (this.noHay) this.setStatus('noHay', ctx);
       else this.setWorking(ctx);
     } else {
@@ -150,7 +150,7 @@ export class VacuumCollector extends Machine {
     const cap = ctx.stat('collector.buffer');
     lines.push({ label: 'Suction', value: `${fmtRate(this.rateIn.value)} (max ${fmtInt(ctx.stat('collector.rate'))})` });
     lines.push({ label: 'Output', value: fmtRate(this.rateOut.value) });
-    lines.push({ label: 'Buffer', value: `${fmtInt(this.buffer.hay)} / ${fmtInt(cap)}`, tone: this.buffer.hay >= cap - EPS ? 'warn' : undefined });
+    lines.push({ label: 'Buffer', value: `${fmtInt(this.buffer.hay)} / ${fmtInt(cap)}`, tone: this.buffer.hay >= cap - FILL_EPS ? 'warn' : undefined });
     lines.push({ label: 'Radius', value: `${fmtNum(ctx.stat('collector.radius'))} m` });
   }
 

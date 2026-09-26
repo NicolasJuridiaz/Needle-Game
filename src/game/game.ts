@@ -9,6 +9,7 @@ import { AudioEngine } from '../audio/audioEngine';
 import type { LoopId, SfxId } from '../audio/api';
 import type { Analytics } from '../platform/analytics';
 import type { Platform } from '../platform/crazygames';
+import { trackRunProgress } from '../platform/progress';
 import { Renderer } from '../render/renderer';
 import { Environment } from '../render/environment';
 import { HayView } from '../render/hayView';
@@ -183,7 +184,7 @@ export class Game implements UIContext {
     this.beltView = new BeltView(scene, q);
     this.buildingViews = new BuildingViews(scene);
     this.ghost = new Ghost(scene);
-    this.wires = new PowerWires(scene);
+    this.wires = new PowerWires(scene, q);
     this.fx = new Fx(sim.events, this.particles);
     this.controller = new PlayerController(sim);
     this.controller.onFootstep = () => this.audio.play('footstep', { volume: 0.5 });
@@ -206,7 +207,8 @@ export class Game implements UIContext {
     if (sim.player.wheelbarrow) this.ensureBarrowModel();
     this.subscribeSimEvents();
     this.ui = new UI(this.uiRoot, this);
-    this.platform.reportProgress(Math.round((sim.progress.needlesFound.length / NEEDLE_COUNT) * 100));
+    // CrazyGames completion: reported now (new game 0 / loaded save), on each needle and on completion.
+    this.unsub.push(trackRunProgress(this.platform, sim, NEEDLE_COUNT));
     this.setMode(this.mode === 'loading' ? 'clickToPlay' : 'clickToPlay');
   }
 
@@ -270,7 +272,6 @@ export class Game implements UIContext {
       this.analytics.once('first_needle', { by: e.by, t: Math.round(this.sim.time) });
       this.analytics.track('needle_found', { index: e.index + 1, by: e.by, t: Math.round(this.sim.time), progress: +this.sim.hay.progress().toFixed(3) });
       this.platform.happytime();
-      this.platform.reportProgress(Math.round((this.sim.progress.needlesFound.length / NEEDLE_COUNT) * 100));
       this.saveGame(true);
     });
     on('needle:returned', (e) => this.audio.play('needleReturn', { pos: e.pos }));
@@ -286,7 +287,6 @@ export class Game implements UIContext {
     on('game:completed', (e) => {
       this.audio.play('complete');
       this.platform.happytime();
-      this.platform.reportProgress(100);
       this.analytics.track('game_completed', { minutes: +(e.time / 60).toFixed(1) });
       this.saveGame(true);
       if (!this.meta.continuedAfterCompletion) this.summaryTimer = 4;
@@ -670,6 +670,8 @@ export class Game implements UIContext {
   keyLabel(code: string): string { return this.input.label(code); }
   getHint(): { text: string; key?: string } | null { return this.hint ? { text: this.hint.text, key: this.hint.key } : null; }
   isTouchOnly(): boolean { return this.platform.isTouchOnlyDevice(); }
+  /** Settings panel: the selected quality only fully applies after a reload (anti-aliasing). */
+  graphicsReloadRequired(): boolean { return this.renderer.needsReloadFor(this.settings.quality); }
   get lastSavedAt(): number { return this.saves.lastSavedAt; }
 
   private makeActions(): UIActions {
@@ -719,11 +721,14 @@ export class Game implements UIContext {
     this.audio.setMusicEnabled(this.settings.music);
     this.renderer.setFov(this.settings.fov);
     if (this.settings.quality !== prevQuality) {
-      this.renderer.setQuality(this.settings.quality);
-      this.env.setQuality?.(this.settings.quality);
-      this.hayView.setQuality?.(this.settings.quality);
-      this.beltView.setQuality?.(this.settings.quality);
-      this.particles.setQuality?.(this.settings.quality);
+      // Everything but MSAA applies live (see graphicsReloadRequired).
+      const q = this.settings.quality;
+      this.renderer.setQuality(q);
+      this.env.setQuality(q);
+      this.hayView.setQuality(q);
+      this.beltView.setQuality(q);
+      this.particles.setQuality(q);
+      this.wires.setQuality(q);
     }
     this.saves.saveSettings(this.settings);
   }

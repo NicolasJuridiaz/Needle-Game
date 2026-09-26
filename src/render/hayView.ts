@@ -81,6 +81,7 @@ export class HayView {
       metalness: 0,
       envMapIntensity: 0.5,
     });
+    this.applyTextureQuality();
     this.build();
   }
 
@@ -99,11 +100,26 @@ export class HayView {
     this.apply(rect.c0, rect.r0, rect.c1 + 1, rect.r1 + 1);
   }
 
+  /** Live: rebuilds the tuft pool for the new budget and re-filters the hay textures. */
   setQuality(q: Quality): void {
     if (q === this.quality) return;
     this.quality = q;
+    this.applyTextureQuality();
     this.buildTufts();
     if (this.mesh) this.refreshAllTufts();
+  }
+
+  /** Live tuft instances / pool capacity (QA). */
+  get tuftStats(): { live: number; capacity: number } {
+    return { live: this.tufts?.count ?? 0, capacity: this.slots?.capacity ?? 0 };
+  }
+
+  /** Anisotropic filtering of the (shared) hay textures: the pile is mostly seen at grazing angles. */
+  private applyTextureQuality(): void {
+    const a = qualityProfile(this.quality).anisotropy;
+    for (const t of [this.material.map, this.material.normalMap]) {
+      if (t && t.anisotropy !== a) { t.anisotropy = a; t.needsUpdate = true; }
+    }
   }
 
   dispose(): void {

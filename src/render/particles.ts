@@ -243,9 +243,11 @@ export class Particles {
   private fovScale = 0.9;
   /** Emits further than this from the camera are dropped (m). */
   cullDistance = 55;
+  private quality: Quality;
 
   constructor(private readonly scene: THREE.Scene, quality: Quality) {
     this.map = particleAtlas();
+    this.quality = quality;
     this.build(quality);
   }
 
@@ -265,7 +267,10 @@ export class Particles {
     this.additive.points.onBeforeRender = hook;
   }
 
+  /** Live: re-creates both pools with the new cap (particles in flight are dropped). */
   setQuality(q: Quality): void {
+    if (q === this.quality) return;
+    this.quality = q;
     this.normal.dispose();
     this.additive.dispose();
     this.build(q);
@@ -273,6 +278,8 @@ export class Particles {
 
   /** Live particle count (debug overlay). */
   get count(): number { return this.normal.n + this.additive.n; }
+  /** Hard cap on live particles (both layers). */
+  get capacity(): number { return this.normal.cap + this.additive.cap; }
 
   /** True if a point is close enough to the camera to be worth emitting at. */
   near(x: number, y: number, z: number, dist = this.cullDistance): boolean {

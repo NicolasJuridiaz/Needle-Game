@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NEEDLE_COUNT } from '../src/config/needles';
 import { Platform, SDK_INIT_TIMEOUT_MS } from '../src/platform/crazygames';
+import { DIAGNOSTIC_HISTORY, DiagnosticLog } from '../src/platform/log';
+import { completionPercent, trackRunProgress } from '../src/platform/progress';
 import { MAX_ENTRY_BYTES, PlatformStorage, utf8Length } from '../src/platform/storage';
 import { Analytics, ANALYTICS_BUFFER_SIZE, type AnalyticsDebugHandle, type AnalyticsEvent } from '../src/platform/analytics';
 import type { CrazyGameSettings } from '../src/platform/sdk';
+import { Sim } from '../src/sim/sim';
 
 class MemLocalStorage {
   readonly map = new Map<string, string>();
@@ -216,14 +220,21 @@ describe('Platform lifecycle calls', () => {
     expect(() => p.gameplayStart()).not.toThrow();
   });
 
-  it('reportProgress clamps, rounds and forwards only changes', async () => {
+  it('reportProgress clamps, rounds and forwards only increases within a run', async () => {
     const { f, p } = await ready();
     p.reportProgress(33.4);
     p.reportProgress(33);
     p.reportProgress(150);
     p.reportProgress(Number.NaN);
     p.reportProgress(-5);
-    expect(f.calls).toEqual(['progress:33', 'progress:100', 'progress:0']);
+    p.reportProgress(80);
+    expect(f.calls).toEqual(['progress:33', 'progress:100']);
+    expect(p.reportedProgress).toBe(100);
+    // A new run may go back down (and is always reported, even when unchanged).
+    p.startRun(0);
+    p.startRun(0);
+    p.reportProgress(17);
+    expect(f.calls).toEqual(['progress:33', 'progress:100', 'progress:0', 'progress:0', 'progress:17']);
   });
 
   it('happytime is rate limited', async () => {
@@ -424,5 +435,284 @@ describe('Analytics', () => {
     const ends = a.events().filter((e) => e.name === 'session_duration');
     expect(ends).toHaveLength(1);
     expect(ends[0].props).toMatchObject({ events: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// CrazyGames completion percentage
+// ---------------------------------------------------------------------------------------------
+
+describe('Completion progress (reportGameCompletedPercentage)', () => {
+  async function sdkPlatform() {
+    const f = fakeSdk();
+    withSdk(f);
+    const p = new Platform();
+    await p.init();
+    const progress = () => f.calls.filter((c) => c.startsWith('progress:')).map((c) => Number(c.slice(9)));
+    return { f, p, progress };
+  }
+  const findAll = (sim: Sim, n = Infinity) => {
+    let k = 0;
+    for (const nd of sim.hay.needles) { if (k++ >= n) break; sim.foundNeedle(nd.id, 'manual', nd.pos); }
+  };
+  const roundTrip = (sim: Sim) => Sim.fromSave(JSON.parse(JSON.stringify(sim.serialize())));
+
+  it('completionPercent maps found needles to an integer 0..100', () => {
+    expect([0, 1, 2, 3, 4, 5, 6].map((n) => completionPercent(n, 6))).toEqual([0, 17, 33, 50, 67, 83, 100]);
+    expect(completionPercent(2, 6, true)).toBe(100);
+    expect(completionPercent(9, 6)).toBe(100);
+    expect(completionPercent(-1, 6)).toBe(0);
+    expect(completionPercent(3, 0)).toBe(0);
+    expect(completionPercent(Number.NaN, 6)).toBe(0);
+    expect(completionPercent(3, Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  it('new game reports 0, every needle updates it, completion reports 100, keep playing never goes lower', async () => {
+    const { p, progress } = await sdkPlatform();
+    const sim = new Sim(1234);
+    expect(sim.hay.needles.length).toBe(NEEDLE_COUNT);
+    const off = trackRunProgress(p, sim, NEEDLE_COUNT);
+    expect(progress()).toEqual([0]);
+    findAll(sim);
+    expect(sim.completed).toBe(true);
+    const steps = Array.from({ length: NEEDLE_COUNT }, (_, i) => completionPercent(i + 1, NEEDLE_COUNT));
+    expect(progress()).toEqual([0, ...steps]);
+    expect(progress().at(-1)).toBe(100);
+    // Keep playing: the run goes on, nothing can pull the reported value down.
+    for (let i = 0; i < 40; i++) sim.tick(0.05);
+    p.reportProgress(50);
+    p.reportProgress(completionPercent(sim.progress.needlesFound.length, NEEDLE_COUNT, sim.completed));
+    const values = progress();
+    expect(values.slice(values.indexOf(100))).toEqual([100]);
+    expect(p.reportedProgress).toBe(100);
+    off();
+  });
+
+  it('a loaded save reports its real progress on load (partial and completed runs)', async () => {
+    const partial = new Sim(77);
+    findAll(partial, 2);
+    const a = await sdkPlatform();
+    trackRunProgress(a.p, roundTrip(partial), NEEDLE_COUNT);
+    expect(a.progress()).toEqual([completionPercent(2, NEEDLE_COUNT)]);
+
+    const done = new Sim(78);
+    findAll(done);
+    const b = await sdkPlatform();
+    const loaded = roundTrip(done);
+    expect(loaded.completed).toBe(true);
+    trackRunProgress(b.p, loaded, NEEDLE_COUNT);
+    expect(b.progress()).toEqual([100]);
+  });
+
+  it('a New Run after completion reports 0 again', async () => {
+    const { p, progress } = await sdkPlatform();
+    const first = new Sim(5);
+    const off = trackRunProgress(p, first, NEEDLE_COUNT);
+    findAll(first);
+    off();
+    const second = new Sim(6);
+    trackRunProgress(p, second, NEEDLE_COUNT);
+    expect(progress().at(-1)).toBe(0);
+    findAll(second, 1);
+    expect(progress().at(-1)).toBe(completionPercent(1, NEEDLE_COUNT));
+    // The finished run's events no longer report anything.
+    first.events.emit('game:completed', { time: 1 });
+    expect(progress().at(-1)).toBe(completionPercent(1, NEEDLE_COUNT));
+  });
+
+  it('progress tracking is a no-op without the SDK (and never throws)', async () => {
+    const p = new Platform();
+    await p.init();
+    const sim = new Sim(3);
+    expect(() => { trackRunProgress(p, sim, NEEDLE_COUNT); findAll(sim); }).not.toThrow();
+    expect(p.reportedProgress).toBe(100);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// SDK failure isolation: the game keeps running, storage falls back, the console stays quiet
+// ---------------------------------------------------------------------------------------------
+
+describe('SDK failure isolation', () => {
+  const notices = () => vi.mocked(console.info).mock.calls.length + vi.mocked(console.warn).mock.calls.length;
+
+  /** Every Platform entry point the game uses, several times over (per-call spam would show up). */
+  function exercise(p: Platform): void {
+    for (let i = 0; i < 6; i++) {
+      p.loadingStart(); p.loadingStop();
+      p.gameplayStart(); p.gameplayStop();
+      p.happytime();
+      p.startRun(0); p.reportProgress(20 + i * 10);
+      p.setContext({ minutes: i }); p.clearContext();
+      p.isTouchOnlyDevice();
+      p.onMuteChange(() => {})();
+      p.storage.setJSON('pn_save_v1', { v: i });
+      p.storage.getJSON('pn_save_v1');
+      p.storage.setString('pn_settings', '{"quality":"low"}');
+      p.storage.remove('pn_save_corrupt');
+    }
+    p.dispose();
+  }
+
+  function expectStandalone(p: Platform): void {
+    expect(p.env).toBe('disabled');
+    expect(p.sdkActive).toBe(false);
+    expect(() => exercise(p)).not.toThrow();
+    expect(ls.getItem('pn_save_v1')).toBe('{"v":5}');
+    expect(ls.getItem('pn_settings')).toBe('{"quality":"low"}');
+    expect((p.storage as PlatformStorage).backendKind).toBe('localStorage');
+    expect(vi.mocked(console.warn)).not.toHaveBeenCalled();
+    expect(vi.mocked(console.info)).toHaveBeenCalledTimes(1);
+  }
+
+  it('SDK script blocked (window.CrazyGames undefined)', async () => {
+    const p = new Platform();
+    await expect(p.init()).resolves.toBeUndefined();
+    expectStandalone(p);
+  });
+
+  it('window.CrazyGames access throws', async () => {
+    g.window = Object.defineProperty({}, 'CrazyGames', { get() { throw new Error('blocked by extension'); } });
+    const p = new Platform();
+    await expect(p.init()).resolves.toBeUndefined();
+    expectStandalone(p);
+  });
+
+  it('SDK present but init() rejects', async () => {
+    const f = fakeSdk({ init: () => Promise.reject(new Error('network')) });
+    withSdk(f);
+    const p = new Platform();
+    await expect(p.init()).resolves.toBeUndefined();
+    expectStandalone(p);
+    expect(f.calls).toEqual([]);
+    expect(f.store.size).toBe(0);
+  });
+
+  it('SDK init() never settles (timeout)', async () => {
+    vi.useFakeTimers();
+    const f = fakeSdk({ init: () => new Promise<void>(() => {}) });
+    withSdk(f);
+    const p = new Platform();
+    const done = p.init();
+    await vi.advanceTimersByTimeAsync(SDK_INIT_TIMEOUT_MS);
+    await expect(done).resolves.toBeUndefined();
+    expect(p.initError).toMatch(/timed out/);
+    expectStandalone(p);
+    expect(f.calls).toEqual([]);
+  });
+
+  it("SDK environment 'disabled'", async () => {
+    const f = fakeSdk({ env: 'disabled' });
+    withSdk(f);
+    const p = new Platform();
+    await p.init();
+    expectStandalone(p);
+    expect(f.calls).toEqual([]);
+    expect(f.data.setItem).not.toHaveBeenCalled();
+  });
+
+  it('every SDK method throwing at runtime: no exception, storage moves to localStorage, one notice at most', async () => {
+    const boom = (): never => { throw new Error('sdk bug'); };
+    const game = new Proxy({}, { get: (_t, key) => (key === 'settings' ? boom() : boom) });
+    const data = { getItem: vi.fn(boom), setItem: vi.fn(boom), removeItem: vi.fn(boom), clear: boom };
+    g.window = {
+      CrazyGames: {
+        SDK: {
+          environment: 'crazygames', init: () => Promise.resolve(), game, data,
+          user: Object.defineProperty({}, 'systemInfo', { get: boom }),
+        },
+      },
+    };
+    const p = new Platform();
+    await p.init();
+    expect(p.env).toBe('crazygames');
+    expect(() => exercise(p)).not.toThrow();
+    expect(data.setItem).toHaveBeenCalledTimes(1); // first failure moves the session to localStorage
+    expect((p.storage as PlatformStorage).backendKind).toBe('localStorage');
+    expect(ls.getItem('pn_save_v1')).toBe('{"v":5}');
+    expect(p.storage.getJSON<{ v: number }>('pn_save_v1')?.v).toBe(5);
+    expect(notices()).toBeLessThanOrEqual(1);
+    expect(p.diagnostics.length).toBeGreaterThan(1); // the rest is recorded, not printed
+  });
+
+  it('individual SDK game methods throwing are isolated (gameplayStart, happytime, progress, context)', async () => {
+    const f = fakeSdk();
+    withSdk(f);
+    const p = new Platform();
+    await p.init();
+    for (const k of ['gameplayStart', 'gameplayStop', 'happytime', 'reportGameCompletedPercentage', 'setGameContext', 'loadingStart'] as const) {
+      (f.sdk.game as Record<string, unknown>)[k] = () => { throw new Error(`${k} broke`); };
+    }
+    expect(() => exercise(p)).not.toThrow();
+    expect(notices()).toBe(1);
+    // Storage was fine all along: still the Data module.
+    expect((p.storage as PlatformStorage).backendKind).toBe('sdk');
+    expect(f.store.get('pn_save_v1')).toBe('{"v":5}');
+  });
+
+  it('a throwing SDK data.getItem falls back to localStorage for reads', async () => {
+    const f = fakeSdk();
+    withSdk(f);
+    const p = new Platform();
+    await p.init();
+    ls.map.set('pn_settings', '{"quality":"high"}');
+    (f.data as { getItem: unknown }).getItem = () => { throw { code: 'other', message: 'storage not ready' }; };
+    expect(p.storage.getJSON<{ quality: string }>('pn_settings')?.quality).toBe('high');
+    expect((p.storage as PlatformStorage).backendKind).toBe('localStorage');
+    expect(notices()).toBe(1);
+  });
+
+  it('dataLimitExcedeed stays on the Data module (reported, not split across backends)', async () => {
+    const f = fakeSdk();
+    withSdk(f);
+    const p = new Platform();
+    await p.init();
+    f.data.failWith = { code: 'dataLimitExcedeed', message: 'too big' };
+    for (let i = 0; i < 5; i++) expect(p.storage.setJSON('pn_save_v1', { i })).toBe(false);
+    expect((p.storage as PlatformStorage).backendKind).toBe('sdk');
+    expect(ls.getItem('pn_save_v1')).toBeNull();
+    expect(notices()).toBe(1);
+  });
+
+  it('an SDK without a usable data module keeps localStorage', async () => {
+    const f = fakeSdk();
+    (f.sdk as { data: unknown }).data = { getItem: () => null };
+    withSdk(f);
+    const p = new Platform();
+    await p.init();
+    expect(p.sdkActive).toBe(true);
+    expect((p.storage as PlatformStorage).backendKind).toBe('localStorage');
+    expect(p.storage.setString('k', 'v')).toBe(true);
+    expect(ls.getItem('k')).toBe('v');
+    expect(notices()).toBe(1);
+  });
+});
+
+describe('DiagnosticLog', () => {
+  it('prints only the first notice, records the rest', () => {
+    const log = new DiagnosticLog(false);
+    log.info('a');
+    log.warn('b', new Error('x'));
+    log.warn('c');
+    expect(console.info).toHaveBeenCalledTimes(1);
+    expect(console.warn).not.toHaveBeenCalled();
+    expect(log.entries).toEqual(['a', 'b (x)', 'c']);
+    expect(log.printedCount).toBe(1);
+  });
+
+  it('prints everything in verbose (?debug=1) mode and caps its history', () => {
+    const log = new DiagnosticLog(true);
+    for (let i = 0; i < DIAGNOSTIC_HISTORY + 5; i++) log.warn(`w${i}`);
+    expect(console.warn).toHaveBeenCalledTimes(DIAGNOSTIC_HISTORY + 5);
+    expect(log.entries).toHaveLength(DIAGNOSTIC_HISTORY);
+    expect(log.entries[0]).toBe('w5');
+  });
+
+  it('defaults to verbose with ?debug=1', () => {
+    g.location = { search: '?debug=1' };
+    const log = new DiagnosticLog();
+    log.info('one');
+    log.info('two');
+    expect(console.info).toHaveBeenCalledTimes(2);
   });
 });

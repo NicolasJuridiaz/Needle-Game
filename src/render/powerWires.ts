@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { Building } from '../sim/building';
 import { COLORS } from './palette';
+import { qualityProfile, type Quality } from './quality';
 
-const SEGMENTS = 12;
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 
@@ -17,15 +17,18 @@ interface LineLayer {
 /**
  * Power cables: catenary lines pole/generator <-> pole (`power.wires`) and thinner-looking copper feeds
  * pole/generator -> consumer (`power.feeds`). Geometry is rebuilt only when the wiring or the positions of
- * the wired buildings change (cheap per-frame signature check, no allocations).
+ * the wired buildings change (cheap per-frame signature check, no allocations). Segments per cable follow
+ * the quality profile.
  */
 export class PowerWires {
   private readonly root = new THREE.Group();
   private readonly wireLayer: LineLayer;
   private readonly feedLayer: LineLayer;
   private signature = NaN;
+  private segments: number;
 
-  constructor(private readonly scene: THREE.Scene) {
+  constructor(private readonly scene: THREE.Scene, quality: Quality = 'medium') {
+    this.segments = qualityProfile(quality).wireSegments;
     this.root.name = 'powerWires';
     this.wireLayer = this.makeLayer(new THREE.LineBasicMaterial({ color: 0x1d1f21 }), 128);
     this.feedLayer = this.makeLayer(new THREE.LineBasicMaterial({ color: COLORS.copper, transparent: true, opacity: 0.85 }), 128);
@@ -39,6 +42,7 @@ export class PowerWires {
     geo.setDrawRange(0, 0);
     const line = new THREE.LineSegments(geo, mat);
     line.frustumCulled = false;
+    line.name = mat.transparent ? 'powerFeeds' : 'powerCables';
     this.root.add(line);
     return { line, geo, attr, capacity: segments, count: 0 };
   }
@@ -80,8 +84,8 @@ export class PowerWires {
     if (h === this.signature) return;
     this.signature = h;
 
-    this.ensure(this.wireLayer, wires.length * SEGMENTS);
-    this.ensure(this.feedLayer, feeds.length * SEGMENTS);
+    this.ensure(this.wireLayer, wires.length * this.segments);
+    this.ensure(this.feedLayer, feeds.length * this.segments);
     this.wireLayer.count = 0;
     this.feedLayer.count = 0;
     for (const w of wires) {
@@ -105,9 +109,10 @@ export class PowerWires {
     const len = a.distanceTo(b);
     const sag = sagMin + len * sagPerM;
     const arr = layer.attr.array as Float32Array;
+    const n = this.segments;
     let px = a.x, py = a.y, pz = a.z;
-    for (let i = 1; i <= SEGMENTS; i++) {
-      const t = i / SEGMENTS;
+    for (let i = 1; i <= n; i++) {
+      const t = i / n;
       const x = a.x + (b.x - a.x) * t;
       const z = a.z + (b.z - a.z) * t;
       // Parabola approximates the catenary well for shallow sags.
@@ -119,6 +124,17 @@ export class PowerWires {
       px = x; py = y; pz = z;
     }
   }
+
+  /** Cable smoothness by quality; the geometry is rebuilt on the next sync(). */
+  setQuality(q: Quality): void {
+    const n = qualityProfile(q).wireSegments;
+    if (n === this.segments) return;
+    this.segments = n;
+    this.signature = NaN;
+  }
+
+  /** Line segments currently used per cable. */
+  get segmentsPerCable(): number { return this.segments; }
 
   dispose(): void {
     this.scene.remove(this.root);

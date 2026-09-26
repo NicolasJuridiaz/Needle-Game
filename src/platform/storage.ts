@@ -1,3 +1,4 @@
+import { DiagnosticLog } from './log';
 import type { CrazyDataModule } from './sdk';
 
 /**
@@ -86,7 +87,9 @@ function resolveLocalStorage(): KeyValueBackend | null {
 
 /**
  * Storage implementation with a switchable backend. Created before the SDK is initialised (localStorage),
- * then pointed at `SDK.data` by the Platform once the environment is known.
+ * then pointed at `SDK.data` by the Platform once the environment is known. If the Data module misbehaves
+ * at runtime (disabled, throwing), the session falls back to localStorage (or memory) and keeps going.
+ * Console output goes through a DiagnosticLog (shared with the Platform): at most one printed notice.
  */
 export class PlatformStorage implements Storage {
   /** Last failure description (null after a successful write), for diagnostics / the pause menu. */
@@ -94,7 +97,7 @@ export class PlatformStorage implements Storage {
   private backend: KeyValueBackend;
   private kind: StorageBackendKind;
 
-  constructor() {
+  constructor(private readonly log: DiagnosticLog = new DiagnosticLog()) {
     const ls = resolveLocalStorage();
     this.backend = ls ?? new MemoryBackend();
     this.kind = ls ? 'localStorage' : 'memory';
@@ -102,10 +105,15 @@ export class PlatformStorage implements Storage {
 
   get backendKind(): StorageBackendKind { return this.kind; }
 
-  /** Route all reads/writes through the CrazyGames Data module. */
-  useSdkData(data: CrazyDataModule): void {
+  /** Route all reads/writes through the CrazyGames Data module. Returns false (and keeps the current backend) if it is unusable. */
+  useSdkData(data: CrazyDataModule): boolean {
+    if (!data || typeof data.getItem !== 'function' || typeof data.setItem !== 'function' || typeof data.removeItem !== 'function') {
+      this.log.warn(`[storage] CrazyGames data module unusable, using ${this.kind}`);
+      return false;
+    }
     this.backend = data;
     this.kind = 'sdk';
+    return true;
   }
 
   getString(key: string): string | null {
@@ -121,7 +129,7 @@ export class PlatformStorage implements Storage {
   setString(key: string, value: string): boolean {
     if (exceedsLimit(value)) {
       this.lastError = `"${key}" is ${Math.round(utf8Length(value) / 1024)} KB (limit ${MAX_ENTRY_BYTES / 1024} KB)`;
-      console.warn(`[storage] refused to write ${this.lastError}`);
+      this.log.warn(`[storage] refused to write ${this.lastError}`);
       return false;
     }
     try {
@@ -140,7 +148,7 @@ export class PlatformStorage implements Storage {
     try {
       return JSON.parse(raw) as T;
     } catch (err) {
-      console.warn(`[storage] "${key}" holds invalid JSON, ignoring it`, err);
+      this.log.warn(`[storage] "${key}" holds invalid JSON, ignoring it`, err);
       return null;
     }
   }
@@ -151,7 +159,7 @@ export class PlatformStorage implements Storage {
       raw = JSON.stringify(value);
     } catch (err) {
       this.lastError = `"${key}" could not be serialized: ${errorMessage(err)}`;
-      console.warn(`[storage] ${this.lastError}`);
+      this.log.warn(`[storage] ${this.lastError}`);
       return false;
     }
     if (raw === undefined) {
@@ -170,23 +178,24 @@ export class PlatformStorage implements Storage {
   }
 
   /**
-   * Classifies a backend failure. Returns true when the backend was switched and the caller should retry
-   * (the Data module is disabled for this game -> fall back to localStorage / memory).
+   * Classifies a backend failure. Returns true when the backend was switched and the caller should retry:
+   * any Data module failure other than its size limit (module disabled, SDK bug, `other`) moves this
+   * session to localStorage / memory. A full store (SDK 1 MB limit, localStorage quota) is reported only.
    */
   private handleBackendError(err: unknown, op: string, key: string): boolean {
     const code = errorCode(err);
     this.lastError = `${op} "${key}" failed (${code}): ${errorMessage(err)}`;
-    if (this.kind === 'sdk' && code === 'dataModuleDisabled') {
+    if (this.kind === 'sdk' && code !== 'dataLimitExcedeed') {
       const ls = resolveLocalStorage();
       this.backend = ls ?? new MemoryBackend();
       this.kind = ls ? 'localStorage' : 'memory';
-      console.warn(`[storage] CrazyGames data module disabled, using ${this.kind}`);
+      this.log.warn(`[storage] CrazyGames data module failed (${code}), using ${this.kind} for this session`);
       return true;
     }
     if (code === 'dataLimitExcedeed' || code === 'QuotaExceededError' || code === 'NS_ERROR_DOM_QUOTA_REACHED') {
-      console.warn(`[storage] storage full: ${this.lastError}`);
+      this.log.warn(`[storage] storage full: ${this.lastError}`);
     } else {
-      console.warn(`[storage] ${this.lastError}`);
+      this.log.warn(`[storage] ${this.lastError}`);
     }
     return false;
   }

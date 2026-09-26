@@ -6,7 +6,7 @@ import type { ItemType } from '../sim/types';
 import { createConveyorGeometry, createItemGeometry, type ConveyorGeometryKind } from './models/index';
 import type { ItemModelKind } from './models/api';
 import { COLORS, paintGeometry, paletteMaterial } from './palette';
-import type { Quality } from './quality';
+import { qualityProfile, type Quality } from './quality';
 import { beltTexture } from './textures';
 
 const _m = new THREE.Matrix4();
@@ -33,6 +33,7 @@ interface TileLayer {
 }
 
 interface ItemLayer {
+  type: ItemType;
   geo: THREE.BufferGeometry;
   mesh: THREE.InstancedMesh;
   capacity: number;
@@ -64,13 +65,18 @@ export class BeltView {
   /** Conveyors and the curve value their tile was built with (auto-curve change detection). */
   private conveyors: Building[] = [];
   private conveyorCurves: number[] = [];
+  /** Belt frames cast sun shadows (whenever shadows are on). */
   private shadows: boolean;
+  /** Items on the belts cast sun shadows (high only: hundreds of small moving casters). */
+  private itemShadows: boolean;
   private scroll = 0;
   private lastTime = -1;
 
   constructor(private readonly scene: THREE.Scene, quality: Quality) {
     this.root.name = 'belts';
-    this.shadows = quality !== 'low';
+    const prof = qualityProfile(quality);
+    this.shadows = prof.shadows;
+    this.itemShadows = prof.shadows && prof.itemShadows;
     const base = beltTexture();
     this.beltMap = base.clone();
     this.beltMap.wrapS = THREE.RepeatWrapping;
@@ -88,18 +94,19 @@ export class BeltView {
     for (const type of ITEM_KINDS) {
       const geo = createItemGeometry(ITEM_MODEL[type]);
       if (!geo.getAttribute('color')) paintGeometry(geo, ITEM_COLOR[type]);
-      const layer: ItemLayer = { geo, mesh: this.makeItemMesh(geo, 256), capacity: 256, count: 0, overflow: false };
+      const layer: ItemLayer = { type, geo, mesh: this.makeItemMesh(geo, 256, type), capacity: 256, count: 0, overflow: false };
       this.items.set(type, layer);
     }
     scene.add(this.root);
   }
 
-  private makeItemMesh(geo: THREE.BufferGeometry, cap: number): THREE.InstancedMesh {
+  private makeItemMesh(geo: THREE.BufferGeometry, cap: number, type: ItemType): THREE.InstancedMesh {
     const m = new THREE.InstancedMesh(geo, paletteMaterial(), cap);
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     m.count = 0;
     m.frustumCulled = false;
-    m.castShadow = this.shadows;
+    m.name = `belt:item:${type}`;
+    m.castShadow = this.itemShadows;
     m.receiveShadow = true;
     this.root.add(m);
     return m;
@@ -214,7 +221,7 @@ export class BeltView {
         this.root.remove(layer.mesh);
         layer.mesh.dispose();
         layer.capacity *= 2;
-        layer.mesh = this.makeItemMesh(layer.geo, layer.capacity);
+        layer.mesh = this.makeItemMesh(layer.geo, layer.capacity, layer.type);
         layer.overflow = false;
       }
       layer.count = 0;
@@ -246,9 +253,11 @@ export class BeltView {
   };
 
   setQuality(q: Quality): void {
-    this.shadows = q !== 'low';
+    const prof = qualityProfile(q);
+    this.shadows = prof.shadows;
+    this.itemShadows = prof.shadows && prof.itemShadows;
     for (const layer of this.tiles.values()) if (layer.frame) layer.frame.castShadow = this.shadows;
-    for (const layer of this.items.values()) layer.mesh.castShadow = this.shadows;
+    for (const layer of this.items.values()) layer.mesh.castShadow = this.itemShadows;
   }
 
   dispose(): void {
