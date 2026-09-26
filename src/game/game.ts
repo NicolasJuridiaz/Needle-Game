@@ -32,6 +32,7 @@ import { TOOL_ORDER } from '../sim/types';
 import { UI } from '../ui/ui';
 import type { AimState, BuildHudState, GameMode, UIActions, UIContext } from '../ui/context';
 import { BuildMode } from './buildMode';
+import { advanceFixed, type FixedStepState } from './fixedStep';
 import { Hints, type Hint } from './hints';
 import { Input } from './input';
 import { Interaction, type Aim } from './interaction';
@@ -43,6 +44,8 @@ import { Waypoint } from './waypoint';
 const PANEL_KEYS: Record<string, GameMode> = { KeyT: 'workTree', KeyB: 'shop', KeyO: 'orders' };
 const SIM_RUNNING_MODES = new Set<GameMode>(['play', 'build', 'workTree', 'shop', 'orders']);
 const GAMEPLAY_MODES = new Set<GameMode>(['play', 'build']);
+/** Simulation catch-up limit per rendered frame. */
+const MAX_SIM_STEPS_PER_FRAME = 5;
 
 const LOOP_FOR: Partial<Record<BuildingType, LoopId>> = {
   hayGenerator: 'generator', scannerMk1: 'scanner', scannerMk2: 'scanner', vacuumCollector: 'collector',
@@ -89,7 +92,8 @@ export class Game implements UIContext {
   private meta: GameMeta = { hintsDone: [], continuedAfterCompletion: false };
 
   private mode: GameMode = 'loading';
-  private accumulator = 0;
+  private readonly fixed: FixedStepState = { accumulator: 0 };
+  private readonly simTick = (step: number) => this.sim.tick(step);
   private alpha = 0;
   private lastFrame = 0;
   private frameCount = 0;
@@ -373,15 +377,7 @@ export class Game implements UIContext {
 
     // ----- simulation (fixed step)
     if (SIM_RUNNING_MODES.has(this.mode)) {
-      this.accumulator += dt;
-      let steps = 0;
-      while (this.accumulator >= BALANCE.tickDt && steps < 5) {
-        this.sim.tick(BALANCE.tickDt);
-        this.accumulator -= BALANCE.tickDt;
-        steps++;
-      }
-      if (steps === 5) this.accumulator = 0;
-      this.alpha = this.accumulator / BALANCE.tickDt;
+      this.alpha = advanceFixed(this.fixed, dt, BALANCE.tickDt, MAX_SIM_STEPS_PER_FRAME, this.simTick);
       this.autosaveTimer += dt;
       if (this.autosaveTimer >= BALANCE.autosaveInterval) { this.autosaveTimer = 0; this.saveGame(true); }
       this.contextTimer += dt;
