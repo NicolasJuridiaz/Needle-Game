@@ -10,7 +10,8 @@
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "balance": "vite-node tools/balance/runBalance.ts"
+    "balance": "vite-node tools/balance/runBalance.ts",
+    "balance:many": "vite-node tools/balance/runMany.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

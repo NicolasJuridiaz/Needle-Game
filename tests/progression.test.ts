@@ -572,10 +572,12 @@ describe('orders', () => {
     // Silo stock and power supply.
     for (const id of ['o_wholesale', 'o_bales']) { finish(p, id); p.tick(TICK, ctx); }
     expect(activeIds(p)).toContain('o_stockpile');
-    addBuildings(world, [fakeBuilding('silo', { stored: 1500 }), fakeBuilding('silo', { stored: 400 })]);
+    // Stock is summed over every silo: 75 % + 20 % of the target is not enough, +5 % more completes it.
+    const stockTarget = ORDER_BY_ID.o_stockpile.target;
+    addBuildings(world, [fakeBuilding('silo', { stored: stockTarget * 0.75 }), fakeBuilding('silo', { stored: stockTarget * 0.2 })]);
     p.tick(TICK, ctx);
-    expect(order('o_stockpile').progress).toBe(1900);
-    addBuildings(world, [fakeBuilding('silo', { stored: 100 })]);
+    expect(order('o_stockpile').progress).toBeCloseTo(stockTarget * 0.95, 6);
+    addBuildings(world, [fakeBuilding('silo', { stored: stockTarget * 0.05 })]);
     p.tick(TICK, ctx);
     expect(order('o_stockpile').completed).toBe(true);
 

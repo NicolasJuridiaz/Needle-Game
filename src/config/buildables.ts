@@ -90,7 +90,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   pistonRake: {
     id: 'pistonRake', name: 'Piston Rake', category: 'extraction',
     desc: 'Place facing the haystack. Rakes hay into its tray.',
-    requiresNode: 'x_rake', cost: 2400, costGrowth: 1.15, footprint: [2, 3], height: 2.4, power: 10,
+    requiresNode: 'x_rake', cost: 3000, costGrowth: 1.15, footprint: [2, 3], height: 2.4, power: 10,
     ports: [{ kind: 'out', cell: [0, 1], dir: 2, items: HAY, label: 'Tray chute' }],
     levels: [0], needsPlatformOnLevel1: false, removable: true, movable: true,
     throughputLabel: '15 hay/s', manualOutput: true, icon: 'rake', order: 11,
@@ -98,7 +98,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   roboticArm: {
     id: 'roboticArm', name: 'Robotic Arm', category: 'extraction',
     desc: 'Grabs hay within reach and drops it in front (belt, hopper or floor).',
-    requiresNode: 'x_arm', cost: 6000, costGrowth: 1.15, footprint: [1, 1], height: 3.0, power: 15,
+    requiresNode: 'x_arm', cost: 9000, costGrowth: 1.2, footprint: [1, 1], height: 3.0, power: 15,
     ports: [{ kind: 'out', cell: [0, 0], dir: 0, items: HAY, label: 'Drop point' }],
     levels: [0, 1], needsPlatformOnLevel1: true, removable: true, movable: true,
     throughputLabel: '10 hay/s', icon: 'arm', order: 12,
@@ -106,7 +106,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   vacuumCollector: {
     id: 'vacuumCollector', name: 'Vacuum Collector', category: 'extraction',
     desc: 'Industrial suction: devours hay in a wide radius. Power hungry.',
-    requiresNode: 'x_collector', cost: 40000, costGrowth: 1.2, footprint: [3, 3], height: 3.6, power: 50,
+    requiresNode: 'x_collector', cost: 22000, costGrowth: 1.2, footprint: [3, 3], height: 3.6, power: 50,
     ports: [{ kind: 'out', cell: [0, 1], dir: 2, items: HAY, label: 'Output' }],
     levels: [0], needsPlatformOnLevel1: false, removable: true, movable: true,
     throughputLabel: '50 hay/s', manualOutput: true, icon: 'collector', order: 13,
@@ -239,7 +239,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   scannerMk1: {
     id: 'scannerMk1', name: 'Needle Scanner MK1', category: 'detection',
     desc: 'Inline scanner. Never misses a needle - but has limited throughput.',
-    requiresNode: 'd_scanner', cost: 9000, costGrowth: 1.18, footprint: [3, 2], height: 2.6, power: 20,
+    requiresNode: 'd_scanner', cost: 11000, costGrowth: 1.18, footprint: [3, 2], height: 2.6, power: 20,
     ports: [
       { kind: 'in', cell: [0, 0], dir: 2, items: HAY, label: 'Input' },
       { kind: 'out', cell: [2, 0], dir: 0, items: HAY, label: 'Output' },
@@ -250,7 +250,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   scannerMk2: {
     id: 'scannerMk2', name: 'Needle Scanner MK2', category: 'detection',
     desc: 'High-throughput scanner with automatic needle ejection.',
-    requiresNode: 'd_mk2', cost: 45000, costGrowth: 1.2, footprint: [4, 2], height: 3.2, power: 40,
+    requiresNode: 'd_mk2', cost: 24000, costGrowth: 1.2, footprint: [4, 2], height: 3.2, power: 40,
     ports: [
       { kind: 'in', cell: [0, 0], dir: 2, items: HAY, label: 'Lane A in' },
       { kind: 'out', cell: [3, 0], dir: 0, items: HAY, label: 'Lane A out' },
@@ -265,7 +265,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   compressor: {
     id: 'compressor', name: 'Compressor', category: 'processing',
     desc: 'Presses raw hay into bales worth more.',
-    requiresNode: 'e_compressor', cost: 11000, costGrowth: 1.18, footprint: [3, 2], height: 2.8, power: 25,
+    requiresNode: 'e_compressor', cost: 13000, costGrowth: 1.18, footprint: [3, 2], height: 2.8, power: 25,
     ports: [
       { kind: 'in', cell: [0, 0], dir: 2, items: HAY, label: 'Hay in' },
       { kind: 'in', cell: [0, 1], dir: 2, items: HAY, label: 'Hay in' },

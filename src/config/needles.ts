@@ -10,8 +10,8 @@ export const NEEDLE_BANDS: [number, number][] = [
   [0.15, 0.30],
   [0.30, 0.45],
   [0.45, 0.60],
-  [0.60, 0.80],
-  [0.80, 0.97],
+  [0.66, 0.84],
+  [0.88, 0.98],
 ];
 
 export interface NeedleBuffDef {

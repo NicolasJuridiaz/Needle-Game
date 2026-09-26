@@ -29,7 +29,7 @@ export const WORLD = {
     /** Surface noise amplitude (m) for an organic silhouette. */
     noise: 0.45,
     /** Total virtual hay units in the initial pile (GDD suggests ~150k). */
-    totalUnits: 150_000,
+    totalUnits: 200_000,
     /** Max slope before hay slides (angle of repose), degrees. */
     reposeDeg: 40,
   },
