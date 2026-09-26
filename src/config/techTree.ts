@@ -91,7 +91,7 @@ export const TECH_NODES: TechNode[] = [
     levels: [lvl(1, 'Vacuum Tool reaches 8 m and a wider cone.', set('tool.vacuum.reach', 8), mul('tool.vacuum.radius', 1.4))] },
   { id: 'p_detector', name: 'Metal Detector Plans', branch: 'player', kind: 'plan', requires: ['p_shovel'], icon: 'detector', pos: [2, 2],
     unlocks: { tool: 'detector' },
-    levels: [lvl(1, 'Unlocks the Metal Detector: hunt needles by sound.')] },
+    levels: [lvl(3, 'Unlocks the Metal Detector: hunt needles by sound.')] },
   { id: 'p_det_range', name: 'Detector Range I', branch: 'player', kind: 'upgrade', requires: ['p_detector'], icon: 'range', pos: [2, 3],
     levels: [lvl(1, 'Detects needles from 13 m away.', set('tool.detector.range', 13))] },
   { id: 'p_det_precision', name: 'Signal Precision I', branch: 'player', kind: 'upgrade', requires: ['p_detector'], icon: 'precision', pos: [3, 3],
@@ -106,7 +106,7 @@ export const TECH_NODES: TechNode[] = [
   // =====================================================================================
   { id: 'x_hopper', name: 'Hopper Plans', branch: 'extraction', kind: 'plan', requires: [], icon: 'hopper', pos: [0, 0],
     unlocks: { building: ['hopper'] },
-    levels: [lvl(1, 'Unlocks the Hay Hopper: dump hay in, it feeds a belt.')] },
+    levels: [lvl(2, 'Unlocks the Hay Hopper: dump hay in, it feeds a belt.')] },
   { id: 'x_hopper_cap', name: 'Hopper Capacity I', branch: 'extraction', kind: 'upgrade', requires: ['x_hopper'], icon: 'capacity', pos: [0, 1],
     levels: [lvl(1, 'Hoppers hold 1,000 hay.', set('hopper.capacity', 1000))] },
   { id: 'x_hopper_out', name: 'Hopper Output I', branch: 'extraction', kind: 'upgrade', requires: ['x_hopper'], icon: 'speed', pos: [1, 1],
@@ -116,7 +116,7 @@ export const TECH_NODES: TechNode[] = [
 
   { id: 'x_rake', name: 'Piston Rake Plans', branch: 'extraction', kind: 'plan', requires: ['f_generator'], icon: 'rake', pos: [2, 0],
     unlocks: { building: ['pistonRake'] },
-    levels: [lvl(2, 'Unlocks the Piston Rake: your first automatic extractor.')] },
+    levels: [lvl(4, 'Unlocks the Piston Rake: your first automatic extractor.')] },
   { id: 'x_rake_speed', name: 'Rake Speed', branch: 'extraction', kind: 'upgrade', requires: ['x_rake'], icon: 'speed', pos: [2, 1],
     levels: [
       lvl(1, 'Rake cycles 25% faster.', mul('rake.cycleTime', 0.8)),
@@ -136,7 +136,7 @@ export const TECH_NODES: TechNode[] = [
 
   { id: 'x_arm', name: 'Robotic Arm Plans', branch: 'extraction', kind: 'plan', requires: ['x_rake', 'l_conveyor'], icon: 'arm', pos: [3, 3],
     unlocks: { building: ['roboticArm'] },
-    levels: [lvl(3, 'Unlocks the Robotic Arm: grabs hay and drops it on belts.')] },
+    levels: [lvl(4, 'Unlocks the Robotic Arm: grabs hay and drops it on belts.')] },
   { id: 'x_arm_speed', name: 'Faster Servos', branch: 'extraction', kind: 'upgrade', requires: ['x_arm'], icon: 'speed', pos: [2, 4],
     levels: [
       lvl(2, 'Arms move 25% faster.', mul('arm.speed', 1.25), mul('arm.rotSpeed', 1.15)),
@@ -161,7 +161,7 @@ export const TECH_NODES: TechNode[] = [
 
   { id: 'x_collector', name: 'Vacuum Collector Plans', branch: 'extraction', kind: 'plan', requires: ['x_arm_grab', 'f_gen_output'], icon: 'collector', pos: [5, 6],
     unlocks: { building: ['vacuumCollector'] },
-    levels: [lvl(4, 'Unlocks the Vacuum Collector: 50 hay/s industrial suction.')] },
+    levels: [lvl(5, 'Unlocks the Vacuum Collector: 50 hay/s industrial suction.')] },
   { id: 'x_col_radius', name: 'Collector Radius I', branch: 'extraction', kind: 'upgrade', requires: ['x_collector'], icon: 'range', pos: [4, 7],
     levels: [lvl(2, 'Collector radius 6 -> 9 m.', set('collector.radius', 9))] },
   { id: 'x_col_suction', name: 'Collector Suction I', branch: 'extraction', kind: 'upgrade', requires: ['x_collector'], icon: 'vacuum', pos: [5, 7],
@@ -178,7 +178,7 @@ export const TECH_NODES: TechNode[] = [
   // =====================================================================================
   { id: 'l_conveyor', name: 'Conveyor Plans', branch: 'logistics', kind: 'plan', requires: ['x_hopper'], icon: 'conveyor', pos: [1, 0],
     unlocks: { building: ['conveyor'] },
-    levels: [lvl(1, 'Unlocks Conveyors: click start, click end, done.')] },
+    levels: [lvl(2, 'Unlocks Conveyors: click start, click end, done.')] },
   { id: 'l_speed', name: 'Belt Speed', branch: 'logistics', kind: 'upgrade', requires: ['l_conveyor'], icon: 'speed', pos: [0, 1],
     levels: [
       lvl(2, 'Belts 50 -> 75 hay/s.', mul('belt.speed', 1.5)),
@@ -188,7 +188,7 @@ export const TECH_NODES: TechNode[] = [
     levels: [lvl(3, 'Items pack 33% tighter on belts (+33% throughput).', mul('belt.spacing', 0.75))] },
   { id: 'l_splitter', name: 'Splitter Plans', branch: 'logistics', kind: 'plan', requires: ['l_conveyor'], icon: 'splitter', pos: [1, 1],
     unlocks: { building: ['splitter'] },
-    levels: [lvl(1, 'Unlocks the Splitter (Even mode).')] },
+    levels: [lvl(2, 'Unlocks the Splitter (Even mode).')] },
   { id: 'l_merger', name: 'Merger Plans', branch: 'logistics', kind: 'plan', requires: ['l_conveyor'], icon: 'merger', pos: [2, 1],
     unlocks: { building: ['merger'] },
     levels: [lvl(1, 'Unlocks the Merger.')] },
@@ -217,7 +217,7 @@ export const TECH_NODES: TechNode[] = [
   // =====================================================================================
   { id: 'd_scanner', name: 'Scanner MK1 Plans', branch: 'detection', kind: 'plan', requires: ['l_splitter'], icon: 'scanner', pos: [1, 0],
     unlocks: { building: ['scannerMk1'] },
-    levels: [lvl(3, 'Unlocks the Needle Scanner: finds needles hidden in belt hay.')] },
+    levels: [lvl(4, 'Unlocks the Needle Scanner: finds needles hidden in belt hay.')] },
   { id: 'd_speed', name: 'Scan Speed', branch: 'detection', kind: 'upgrade', requires: ['d_scanner'], icon: 'speed', pos: [0, 1],
     levels: [
       lvl(2, 'Scan cycles 25% faster.', mul('scanner.cycle', 0.8)),
@@ -234,7 +234,7 @@ export const TECH_NODES: TechNode[] = [
     levels: [lvl(2, 'Scanners eject needles without stopping the line.', set('scanner.autoEject', 1))] },
   { id: 'd_mk2', name: 'Scanner MK2 Plans', branch: 'detection', kind: 'plan', requires: ['d_speed', 'd_batch'], icon: 'scanner2', pos: [1, 3],
     unlocks: { building: ['scannerMk2'] },
-    levels: [lvl(5, 'Unlocks Scanner MK2: 180 hay/s, auto-eject built in.')] },
+    levels: [lvl(6, 'Unlocks Scanner MK2: 180 hay/s, auto-eject built in.')] },
   { id: 'd_mk2_speed', name: 'Scanner MK2 Speed', branch: 'detection', kind: 'upgrade', requires: ['d_mk2'], icon: 'speed', pos: [0, 4],
     levels: [lvl(3, 'MK2 scanners +30% throughput.', mul('scanner2.speedMul', 1.3))] },
   { id: 'd_dual_lane', name: 'Dual Lane Scan', branch: 'detection', kind: 'upgrade', requires: ['d_mk2'], icon: 'dual', pos: [2, 4],
@@ -249,7 +249,7 @@ export const TECH_NODES: TechNode[] = [
     levels: [lvl(2, 'Orders pay 50% more money.', mul('econ.orderRewardMul', 1.5))] },
   { id: 'e_compressor', name: 'Compressor Plans', branch: 'processing', kind: 'plan', requires: ['l_conveyor'], icon: 'compressor', pos: [1, 1],
     unlocks: { building: ['compressor'] },
-    levels: [lvl(3, 'Unlocks the Compressor: 40 hay -> 1 bale ($60).')] },
+    levels: [lvl(4, 'Unlocks the Compressor: 40 hay -> 1 bale ($60).')] },
   { id: 'e_comp_speed', name: 'Compression Speed', branch: 'processing', kind: 'upgrade', requires: ['e_compressor'], icon: 'speed', pos: [0, 2],
     levels: [
       lvl(2, 'Compressors work 25% faster.', mul('compressor.cycle', 0.8)),
@@ -277,7 +277,7 @@ export const TECH_NODES: TechNode[] = [
     levels: [lvl(2, 'Silos get a second output port.', set('silo.dualOutput', 1))] },
   { id: 'e_wrapper', name: 'Wrapper Plans', branch: 'processing', kind: 'plan', requires: ['e_compressor', 'e_silo'], icon: 'wrapper', pos: [2, 4],
     unlocks: { building: ['wrapper'] },
-    levels: [lvl(4, 'Unlocks the Bale Wrapper: bale -> wrapped bale ($110).')] },
+    levels: [lvl(5, 'Unlocks the Bale Wrapper: bale -> wrapped bale ($110).')] },
   { id: 'e_wrap_speed', name: 'Wrap Speed', branch: 'processing', kind: 'upgrade', requires: ['e_wrapper'], icon: 'speed', pos: [1, 5],
     levels: [
       lvl(2, 'Wrappers work 30% faster.', mul('wrapper.cycle', 0.77)),
@@ -293,10 +293,10 @@ export const TECH_NODES: TechNode[] = [
   // =====================================================================================
   { id: 'f_generator', name: 'Hay Generator Plans', branch: 'power', kind: 'plan', requires: [], icon: 'generator', pos: [1, 0],
     unlocks: { building: ['hayGenerator'] },
-    levels: [lvl(1, 'Unlocks the Hay Generator: burn hay, make power.')] },
+    levels: [lvl(3, 'Unlocks the Hay Generator: burn hay, make power.')] },
   { id: 'f_pole', name: 'Power Pole Plans', branch: 'power', kind: 'plan', requires: ['f_generator'], icon: 'pole', pos: [0, 1],
     unlocks: { building: ['powerPole'] },
-    levels: [lvl(1, 'Unlocks Power Poles to carry power across the warehouse.')] },
+    levels: [lvl(2, 'Unlocks Power Poles to carry power across the warehouse.')] },
   { id: 'f_gen_output', name: 'Generator Output', branch: 'power', kind: 'upgrade', requires: ['f_generator'], icon: 'power', pos: [1, 1],
     levels: [
       lvl(2, 'Generators make 90 P (was 60).', set('generator.output', 90)),
@@ -305,7 +305,7 @@ export const TECH_NODES: TechNode[] = [
   { id: 'f_firebox', name: 'Bigger Firebox', branch: 'power', kind: 'upgrade', requires: ['f_generator'], icon: 'fire', pos: [2, 1],
     levels: [lvl(1, 'Fireboxes hold 500 hay of fuel.', set('generator.firebox', 500))] },
   { id: 'f_autofeed', name: 'Auto Feed', branch: 'power', kind: 'upgrade', requires: ['f_generator'], icon: 'input', pos: [3, 1],
-    levels: [lvl(1, 'Generators get a belt input port: no more hand stoking.', set('generator.autoFeed', 1))] },
+    levels: [lvl(2, 'Generators get a belt input port: no more hand stoking.', set('generator.autoFeed', 1))] },
   { id: 'f_fuel_eff', name: 'Fuel Efficiency I', branch: 'power', kind: 'upgrade', requires: ['f_firebox'], icon: 'efficiency', pos: [2, 2],
     levels: [lvl(2, 'Generators burn 30% less hay.', mul('generator.burnRate', 0.7))] },
   { id: 'f_pole_range', name: 'Pole Range', branch: 'power', kind: 'upgrade', requires: ['f_pole'], icon: 'range', pos: [0, 2],

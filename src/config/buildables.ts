@@ -76,7 +76,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   hopper: {
     id: 'hopper', name: 'Hay Hopper', category: 'extraction',
     desc: 'Dump hay in by hand or by belt; it feeds a conveyor.',
-    requiresNode: 'x_hopper', cost: 450, costGrowth: 1.12, footprint: [2, 2], height: 2.2, power: 0,
+    requiresNode: 'x_hopper', cost: 700, costGrowth: 1.12, footprint: [2, 2], height: 2.2, power: 0,
     ports: [
       { kind: 'in', cell: [0, 0], dir: 2, items: ANY }, { kind: 'in', cell: [0, 1], dir: 2, items: ANY },
       { kind: 'in', cell: [0, 0], dir: 3, items: ANY }, { kind: 'in', cell: [1, 0], dir: 3, items: ANY },
@@ -90,7 +90,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   pistonRake: {
     id: 'pistonRake', name: 'Piston Rake', category: 'extraction',
     desc: 'Place facing the haystack. Rakes hay into its tray.',
-    requiresNode: 'x_rake', cost: 1600, costGrowth: 1.15, footprint: [2, 3], height: 2.4, power: 10,
+    requiresNode: 'x_rake', cost: 2400, costGrowth: 1.15, footprint: [2, 3], height: 2.4, power: 10,
     ports: [{ kind: 'out', cell: [0, 1], dir: 2, items: HAY, label: 'Tray chute' }],
     levels: [0], needsPlatformOnLevel1: false, removable: true, movable: true,
     throughputLabel: '15 hay/s', manualOutput: true, icon: 'rake', order: 11,
@@ -98,7 +98,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   roboticArm: {
     id: 'roboticArm', name: 'Robotic Arm', category: 'extraction',
     desc: 'Grabs hay within reach and drops it in front (belt, hopper or floor).',
-    requiresNode: 'x_arm', cost: 4500, costGrowth: 1.15, footprint: [1, 1], height: 3.0, power: 15,
+    requiresNode: 'x_arm', cost: 6000, costGrowth: 1.15, footprint: [1, 1], height: 3.0, power: 15,
     ports: [{ kind: 'out', cell: [0, 0], dir: 0, items: HAY, label: 'Drop point' }],
     levels: [0, 1], needsPlatformOnLevel1: true, removable: true, movable: true,
     throughputLabel: '10 hay/s', icon: 'arm', order: 12,
@@ -106,7 +106,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   vacuumCollector: {
     id: 'vacuumCollector', name: 'Vacuum Collector', category: 'extraction',
     desc: 'Industrial suction: devours hay in a wide radius. Power hungry.',
-    requiresNode: 'x_collector', cost: 32000, costGrowth: 1.2, footprint: [3, 3], height: 3.6, power: 50,
+    requiresNode: 'x_collector', cost: 40000, costGrowth: 1.2, footprint: [3, 3], height: 3.6, power: 50,
     ports: [{ kind: 'out', cell: [0, 1], dir: 2, items: HAY, label: 'Output' }],
     levels: [0], needsPlatformOnLevel1: false, removable: true, movable: true,
     throughputLabel: '50 hay/s', manualOutput: true, icon: 'collector', order: 13,
@@ -239,7 +239,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   scannerMk1: {
     id: 'scannerMk1', name: 'Needle Scanner MK1', category: 'detection',
     desc: 'Inline scanner. Never misses a needle - but has limited throughput.',
-    requiresNode: 'd_scanner', cost: 6500, costGrowth: 1.18, footprint: [3, 2], height: 2.6, power: 20,
+    requiresNode: 'd_scanner', cost: 9000, costGrowth: 1.18, footprint: [3, 2], height: 2.6, power: 20,
     ports: [
       { kind: 'in', cell: [0, 0], dir: 2, items: HAY, label: 'Input' },
       { kind: 'out', cell: [2, 0], dir: 0, items: HAY, label: 'Output' },
@@ -265,7 +265,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   compressor: {
     id: 'compressor', name: 'Compressor', category: 'processing',
     desc: 'Presses raw hay into bales worth more.',
-    requiresNode: 'e_compressor', cost: 8000, costGrowth: 1.18, footprint: [3, 2], height: 2.8, power: 25,
+    requiresNode: 'e_compressor', cost: 11000, costGrowth: 1.18, footprint: [3, 2], height: 2.8, power: 25,
     ports: [
       { kind: 'in', cell: [0, 0], dir: 2, items: HAY, label: 'Hay in' },
       { kind: 'in', cell: [0, 1], dir: 2, items: HAY, label: 'Hay in' },
@@ -277,7 +277,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   wrapper: {
     id: 'wrapper', name: 'Bale Wrapper', category: 'processing',
     desc: 'Wraps bales in plastic. Wrapped bales sell for much more.',
-    requiresNode: 'e_wrapper', cost: 15000, costGrowth: 1.18, footprint: [3, 2], height: 2.8, power: 30,
+    requiresNode: 'e_wrapper', cost: 20000, costGrowth: 1.18, footprint: [3, 2], height: 2.8, power: 30,
     ports: [
       { kind: 'in', cell: [0, 0], dir: 2, items: ['bale'], label: 'Bales in' },
       { kind: 'out', cell: [2, 0], dir: 0, items: ['wrapped'], label: 'Wrapped out' },
@@ -290,7 +290,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   silo: {
     id: 'silo', name: 'Silo', category: 'storage',
     desc: 'Buffer between fast and slow parts of the line. Shows its fill level.',
-    requiresNode: 'e_silo', cost: 4500, costGrowth: 1.12, footprint: [3, 3], height: 7, power: 0,
+    requiresNode: 'e_silo', cost: 6000, costGrowth: 1.12, footprint: [3, 3], height: 7, power: 0,
     ports: [
       { kind: 'in', cell: [0, 1], dir: 2, items: ANY, label: 'Input' },
       { kind: 'in', cell: [1, 0], dir: 3, items: ANY, label: 'Input' },
@@ -306,7 +306,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   hayGenerator: {
     id: 'hayGenerator', name: 'Hay Generator', category: 'power',
     desc: 'Burns hay to make power. Feed the firebox by hand (or by belt with Auto Feed).',
-    requiresNode: 'f_generator', cost: 1100, costGrowth: 1.25, footprint: [3, 3], height: 3.2, power: 0,
+    requiresNode: 'f_generator', cost: 1600, costGrowth: 1.25, footprint: [3, 3], height: 3.2, power: 0,
     ports: [{ kind: 'in', cell: [0, 1], dir: 2, items: HAY, label: 'Fuel in', requiresNode: 'f_autofeed' }],
     levels: [0], needsPlatformOnLevel1: false, removable: true, movable: true,
     throughputLabel: '60 P', manualInput: ['hay'], icon: 'generator', order: 60,

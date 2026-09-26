@@ -20,7 +20,7 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   bucket: { id: 'bucket', name: 'Bucket', kind: 'dig', slot: 3, requiresNode: 'p_bucket', cost: 180, desc: 'Big scoops. Owning it adds +40 carry capacity.', icon: 'bucket' },
   pitchfork: { id: 'pitchfork', name: 'Pitchfork', kind: 'dig', slot: 4, requiresNode: 'p_pitchfork', cost: 650, desc: 'Fast, deep stabs into the stack.', icon: 'pitchfork' },
   vacuum: { id: 'vacuum', name: 'Vacuum Tool', kind: 'suction', slot: 5, requiresNode: 'p_vacuum', cost: 3200, desc: 'Continuous suction at range. Hold to vacuum.', icon: 'vacuum' },
-  detector: { id: 'detector', name: 'Metal Detector', kind: 'detector', slot: 6, requiresNode: 'p_detector', cost: 900, desc: 'Beeps near buried needles. Faster beeps = closer.', icon: 'detector' },
+  detector: { id: 'detector', name: 'Metal Detector', kind: 'detector', slot: 6, requiresNode: 'p_detector', cost: 1500, desc: 'Beeps near buried needles. Faster beeps = closer.', icon: 'detector' },
 };
 
 /** The wheelbarrow is a pushable world object, bought like a tool. */

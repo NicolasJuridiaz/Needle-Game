@@ -247,9 +247,10 @@ describe('shop', () => {
     unlockWithWP(p, 'x_hopper');
     expect(p.buildingUnlocked('hopper')).toBe(true);
     expect(p.money).toBe(1000);
-    expect(p.buildingCost('hopper', 0)).toBe(450);
-    expect(p.buildingCost('hopper', 1)).toBe(Math.round(450 * 1.12));
-    expect(p.buildingCost('hopper', 3)).toBe(Math.round(450 * 1.12 ** 3));
+    const { cost, costGrowth } = BUILDABLES.hopper;
+    expect(p.buildingCost('hopper', 0)).toBe(cost);
+    expect(p.buildingCost('hopper', 1)).toBe(Math.round(cost * costGrowth));
+    expect(p.buildingCost('hopper', 3)).toBe(Math.round(cost * costGrowth ** 3));
     expect(p.buildingCost('conveyor', 50)).toBe(12);
   });
 
@@ -561,10 +562,11 @@ describe('orders', () => {
     p.tick(TICK, ctx);
     expect(activeIds(p)).toContain('o_steady');
     const ticks = Math.round(BALANCE.stableWindow / TICK);
-    // 45 hay/s reaches a 40 hay/s window average after 8/9 of the window.
-    for (let i = 0; i < Math.floor(ticks * 0.85); i++) { p.recordSale('hay', 45 * TICK, true, ORIGIN); p.tick(TICK, ctx); }
+    // Delivering 9/8 of the target reaches the target window average after 8/9 of the window.
+    const rate = ORDER_BY_ID.o_steady.target * 9 / 8;
+    for (let i = 0; i < Math.floor(ticks * 0.85); i++) { p.recordSale('hay', rate * TICK, true, ORIGIN); p.tick(TICK, ctx); }
     expect(order('o_steady').completed).toBe(false);
-    for (let i = 0; i < Math.ceil(ticks * 0.1); i++) { p.recordSale('hay', 45 * TICK, true, ORIGIN); p.tick(TICK, ctx); }
+    for (let i = 0; i < Math.ceil(ticks * 0.1); i++) { p.recordSale('hay', rate * TICK, true, ORIGIN); p.tick(TICK, ctx); }
     expect(order('o_steady').completed).toBe(true);
 
     // Silo stock and power supply.
@@ -579,10 +581,10 @@ describe('orders', () => {
 
     for (const id of ['o_quality', 'o_bigscan']) { finish(p, id); p.tick(TICK, ctx); }
     expect(activeIds(p)).toContain('o_industrial');
-    world.supply = 249;
+    world.supply = ORDER_BY_ID.o_industrial.target - 1;
     p.tick(TICK, ctx);
     expect(order('o_industrial').completed).toBe(false);
-    world.supply = 250;
+    world.supply = ORDER_BY_ID.o_industrial.target;
     p.tick(TICK, ctx);
     expect(order('o_industrial').completed).toBe(true);
 
@@ -714,10 +716,11 @@ describe('serialization', () => {
     const q = new Progression(new EventBus());
     q.deserialize(JSON.parse(JSON.stringify(p.serialize())));
     const ctxQ = fakeCtx(q, new EventBus(), { supply: 0, pile: 0.03, buildings: new Map() });
-    bump(q, 'o_iron', 1300);
+    const rest = ORDER_BY_ID.o_iron.target - 700;
+    bump(q, 'o_iron', rest);
     q.tick(TICK, ctxQ);
     expect(q.orders.find((o) => o.id === 'o_iron')?.completed).toBe(true);
-    bump(p, 'o_iron', 1299);
+    bump(p, 'o_iron', rest - 1);
     p.tick(TICK, ctxP);
     expect(p.orders.find((o) => o.id === 'o_iron')?.completed).toBe(false);
   });

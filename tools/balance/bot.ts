@@ -115,6 +115,8 @@ export class Bot {
   private trunkBuilt = false;
   private bypassBuilt = false;
   private arcs = { south: false, north: false };
+  /** A build site blocked by hay: manual digging goes there until it is clear. */
+  private digFocus: { x: number; z: number } | null = null;
   private starvedSince = new Map<number, number>();
   private lastSnapshot = 0;
   private lastFactoryCheck = -1e9;
@@ -258,8 +260,12 @@ export class Bot {
   private digTrip(): number {
     const sim = this.sim;
     const dp = this.dropTarget();
-    const target = sim.hay.findTarget(dp.x, dp.z, 90, 'nearest');
-    if (!target) return 0;
+    const focus = this.digFocus ? sim.hay.findTarget(this.digFocus.x, this.digFocus.z, 2.5, 'densest') : null;
+    if (this.digFocus && !focus) this.digFocus = null;
+    const near = focus ?? sim.hay.findTarget(dp.x, dp.z, 90, 'nearest');
+    if (!near) return 0;
+    // Walk a little further in to a thick spot (a player does not scrape the thin carpet at the foot).
+    const target = focus ?? sim.hay.findTarget(near.x, near.z, 7, 'densest') ?? near;
     const tool = this.bestDigTool();
     sim.player.equipped = tool;
     const reach = tool === 'vacuum' ? sim.stat('tool.vacuum.reach') : sim.stat(`tool.${tool}.reach`);
@@ -270,7 +276,9 @@ export class Bot {
     else this.moveTo(standX, standZ);
     let got = 0;
     let guard = 0;
-    while (guard++ < 2000) {
+    let poor = 0;
+    const perAction = tool === 'vacuum' ? sim.stat('tool.vacuum.rate') * 0.25 : sim.stat(`tool.${tool}.dig`);
+    while (guard++ < 600) {
       const t2 = sim.hay.findTarget(standX, standZ, reach, 'densest') ?? sim.hay.findTarget(standX, standZ, reach, 'nearest');
       if (!t2) break;
       if (tool === 'vacuum') {
@@ -283,6 +291,8 @@ export class Bot {
         got += r.amount;
         this.advance(sim.stat(`tool.${tool}.interval`));
         if (r.full) break;
+        poor = r.amount < perAction * 0.3 ? poor + 1 : 0;
+        if (poor >= 4) break;
       }
     }
     return got;
@@ -411,11 +421,13 @@ export class Bot {
     const sim = this.sim;
     if (!b.needsPower) return;
     sim.rebuildTopology();
-    if (b.network >= 0) return;
+    const live = (n: number) => n >= 0 && (sim.power.networks[n]?.generators.length ?? 0) > 0;
+    if (live(b.network)) return;
     if (!sim.progress.buildingUnlocked('powerPole')) return;
     const range = sim.stat('pole.range');
-    for (let guard = 0; guard < 5 && b.network < 0; guard++) {
-      const nodes = [...sim.buildingsOfType('powerPole'), ...sim.buildingsOfType('hayGenerator')];
+    for (let guard = 0; guard < 5 && !live(b.network); guard++) {
+      // Only chain from poles that actually reach a generator (never extend an island).
+      const nodes = [...sim.buildingsOfType('powerPole').filter((p) => live(p.network)), ...sim.buildingsOfType('hayGenerator')];
       if (!nodes.length) return;
       const c = b.center;
       let best: { cell: Cell; score: number } | null = null;
@@ -476,7 +488,10 @@ export class Bot {
       && money() >= sim.nextCost('hopper') + 30 * sim.nextCost('conveyor')) {
       this.buildTrunk();
     }
-    if (!this.trunkBuilt) return;
+    if (!this.trunkBuilt) {
+      for (const b of [...sim.buildings.values()]) if (b.needsPower && b.status === 'noPower') this.ensurePower(b);
+      return;
+    }
 
     // Keep the head rake fed and the trunk growing into the cleared pile.
     this.advanceHead();
@@ -541,6 +556,9 @@ export class Bot {
 
     // 6) Move starved extractors forward.
     this.relocateStarved();
+
+    // 7) Anything left without power (placed before poles existed, pole limit reached...) gets a pole.
+    for (const b of [...sim.buildings.values()]) if (b.needsPower && b.status === 'noPower') this.ensurePower(b);
   }
 
   /** Belt arc along the pile's south (side 1) or north (side -1) foot, ending in a hopper beside the trunk. */
@@ -566,7 +584,12 @@ export class Bot {
   }
 
   private placeHeadRake(x: number): Building | null {
-    return this.tryPlace('pistonRake', { x, z: TZ - 1, level: 0 }, 0);
+    const cell: Cell = { x, z: TZ - 1, level: 0 };
+    const r = this.tryPlace('pistonRake', cell, 0);
+    if (r) { this.digFocus = null; return r; }
+    const chk = this.sim.canPlace('pistonRake', cell, 0);
+    if ((chk.reason ?? '').startsWith('Too much hay')) this.digFocus = { x: x + 1, z: TZ + 0.5 };
+    return null;
   }
 
   private buildTrunk(): void {
