@@ -67,6 +67,11 @@ function rampProfile(x: number): number {
   return s / k;
 }
 
+/** Belt surface height (model space) of a ramp tile at local x. */
+export function rampBeltY(x: number, down: boolean): number {
+  return BH + LEVEL_H * rampProfile(down ? -x : x);
+}
+
 function rampSamples(down: boolean, n = 24): Sample[] {
   const pts: THREE.Vector3[] = [];
   for (let i = 0; i <= n; i++) {
