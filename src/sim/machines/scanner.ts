@@ -2,6 +2,7 @@ import { BALANCE } from '../../config/balance';
 import type { BuildingInit, InfoLine, InteractionOption } from '../building';
 import type { SimContext } from '../interfaces';
 import { Inventory } from '../inventory';
+import type { ItemPacket } from '../types';
 import { playerAmount, takeFromPlayer } from './playerTransfer';
 import { approach, BLOCKED_GRACE, EPS, fmtInt, fmtRate, itemLabel, Machine, num, obj, PacketQueue } from './shared';
 
@@ -147,7 +148,7 @@ abstract class Scanner extends Machine {
       moved += p.amount;
       if (p.needleId !== undefined) {
         const id = p.needleId;
-        p.needleId = undefined;
+        delete p.needleId;
         this.needles++;
         ctx.needleDetected(id, this.id, this.posCopy());
         if (!this.autoEject(ctx)) {
