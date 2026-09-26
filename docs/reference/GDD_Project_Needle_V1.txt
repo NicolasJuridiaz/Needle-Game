@@ -1,0 +1,1050 @@
+GAME DESIGN DOCUMENT
+PROJECT NEEDLE
+V1 - COMPLETE RUN
+VISIÓN
+Un factory/incremental 3D en primera persona para navegador. El jugador empieza retirando paja a mano y termina operando una fábrica compleja de extracción, cintas, clasificación, escaneo, procesado, almacenamiento y energía para encontrar todas las agujas ocultas.
+
+Campo
+Definición
+Estado
+GDD de producción - alcance V1
+Plataforma objetivo
+Web / CrazyGames primero; arquitectura compatible con publicación posterior en Poki
+Duración objetivo
+50-70 min para completar la primera run
+Referencia de diseño
+Find The Needle (Steam) como referencia de estructura y fantasía; identidad, assets, UI y contenido propios
+Fecha
+25 septiembre 2026
+
+Principio rector
+RECORTAR CONTENIDO, NO PROFUNDIDAD.
+
+Índice
+Sección
+Contenido
+1
+Resumen del juego y objetivo de V1
+2
+Referencia, pilares y límites de diseño
+3
+Core loop y progresión de una run
+4
+Experiencia inicial, controles y onboarding
+5
+Mundo, pajar, paja y agujas
+6
+Economía, Orders y doble progresión
+7
+Work Tree
+8
+Herramientas manuales
+9
+Extracción y entrada de material
+10
+Logística: conveyors y routing
+11
+Detección de agujas
+12
+Procesado, almacenamiento y venta
+13
+Electricidad y red de potencia
+14
+Cuellos de botella y automatización
+15
+UI/UX, feedback y game feel
+16
+Balance inicial y objetivos de pacing
+17
+Arquitectura técnica para web
+18
+Analytics y criterios de validación
+19
+Scope V1, fuera de alcance y Definition of Done
+20
+Riesgos de diseño y mitigaciones
+Anexo A
+Catálogo consolidado de objetos y upgrades
+Anexo B
+Fuentes de referencia
+
+1. Resumen del juego y objetivo de V1
+Project Needle es un juego 3D en primera persona que mezcla incremental, automatización, gestión de recursos y factory building. La fantasía central es convertir una tarea ridículamente manual -encontrar agujas dentro de una montaña de paja- en un sistema industrial sobredimensionado que trabaja casi solo.
+RETIRAR PAJA   >   VENDER   >   DESBLOQUEAR   >   COMPRAR   >   AUTOMATIZAR   >   OPTIMIZAR   >   ENCONTRAR AGUJAS
+Objetivo de producto
+Ofrecer una primera run completa de 50-70 minutos, con sensación de juego terminado y no de demo técnica.
+Mantener decisiones nuevas casi toda la sesión: un nuevo objeto, una mejora, un cuello de botella, un contrato o una reorganización cada pocos minutos.
+Conseguir que la fábrica del minuto 60 sea visual y funcionalmente irreconocible respecto al inicio.
+Permitir jugar manualmente, pero hacer que automatizar sea tan atractivo que el jugador quiera construir conveyors, splitters, brazos, scanners y buffers sin que el juego le obligue artificialmente.
+Optimizar desde el primer día para navegador: buena lectura visual, carga razonable y simulación de alta escala sin física individual por cada brizna.
+CRITERIO DE ÉXITO DE V1
+Un jugador nuevo entra, entiende qué hacer sin tutorial largo, progresa de herramienta manual a fábrica compleja, encuentra las 6 agujas, completa la run y siente que ha terminado un juego compacto pero completo.
+2. Referencia, pilares y límites de diseño
+2.1 Qué se quiere conservar de la referencia
+Elemento
+Decisión V1
+Primera persona
+Se mantiene.
+Pajar enorme que disminuye
+Se mantiene y debe ser visualmente evidente.
+Herramientas físicas
+Se mantiene una selección reducida pero con upgrades.
+Máquinas sobre el pajar
+Se mantienen Piston Rake, Robotic Arm y Vacuum Collector.
+Conveyors y routing
+Se mantienen como capa opcional de automatización profunda.
+Scanner de agujas
+Se mantiene como pieza central de mid/late game.
+Work/Tech Tree
+Se mantiene como sistema grande de desbloqueos y mejoras.
+Procesado de paja
+Se simplifica a bale + wrapped bale.
+Energía
+Se mantiene, pero con una sola cadena de generación inicial.
+Muchos productos secundarios
+Se recortan en V1.
+Drones/robots móviles
+Fuera de V1.
+Construcción decorativa extensa
+Fuera de V1.
+
+2.2 Pilares
+Pilar
+Qué debe sentir el jugador
+Escala
+"Antes sacaba 1; ahora proceso miles."
+Automatización
+"He construido algo que trabaja por mí."
+Optimización
+"Sé exactamente cuál es mi siguiente cuello de botella."
+Transformación visual
+"Mi almacén parece otro juego comparado con el inicio."
+Descubrimiento
+Encontrar una aguja sigue siendo un evento relevante.
+Humor de premisa
+Una infraestructura industrial absurda para resolver un problema trivial.
+
+2.3 Regla legal/creativa
+NO HACER UN CLON LITERAL
+La referencia sirve para entender el fantasy loop y la profundidad. El título, personajes, arte, modelos 3D, audio, UI, textos, layouts, niveles, iconografía, balance y presentación deben ser propios. La meta es "misma fantasía de progreso, producto diferente".
+3. Core loop y progresión de una run
+3.1 Loop micro
+COGER   >   TRANSPORTAR   >   VENDER/PROCESAR   >   COBRAR   >   MEJORAR
+3.2 Loop macro
+1.  Retirar paja manualmente y generar los primeros ingresos.
+2.  Comprar herramientas para aumentar volumen y capacidad.
+3.  Desbloquear el Work Tree y conseguir Work Points.
+4.  Construir las primeras máquinas que operan sobre el pajar.
+5.  Introducir conveyors para eliminar transporte manual.
+6.  Automatizar detección con scanners y routing con splitters/mergers.
+7.  Procesar el excedente para maximizar ingresos y alimentar energía.
+8.  Resolver cuellos de botella de throughput, buffers y potencia.
+9.  Encontrar las seis agujas y activar sus buffs.
+10.  Completar la fábrica final y cerrar la run con estadísticas.
+3.3 Pacing objetivo de 60 minutos
+Minuto
+Hito / decisión nueva
+0-3
+Manos, primera venta, entender el pajar.
+3-6
+Shovel y primeras mejoras de capacidad.
+6-10
+Pitchfork / Wheelbarrow; volumen claramente mayor.
+10-13
+Metal Detector y primera aguja posible.
+13-16
+Hopper: puente entre juego manual y sistema industrial.
+16-19
+Piston Rake: primera automatización real.
+19-22
+Hay Generator + Power Pole; aparece la potencia.
+22-25
+Conveyor; desaparece parte del transporte manual.
+25-28
+Rake + belt + hopper/sell: primera línea autónoma.
+28-31
+Splitter/Merger; routing y primeras decisiones de throughput.
+31-34
+Robotic Arm; extracción automática flexible.
+34-37
+Scanner MK1; automatización de búsqueda.
+37-40
+Compressor; procesado de mayor valor.
+40-43
+Silo; buffers y gestión de acumulaciones.
+43-46
+Múltiples brazos + upgrades globales.
+46-49
+Segundo scanner / mejoras; resolver cuello de botella.
+49-52
+Wrapper; cadena de procesado completa.
+52-55
+Belt Lift + logística avanzada.
+55-58
+Vacuum Collector; extracción de gran escala.
+58-62
+Scanner MK2; detección de alto throughput.
+62-70
+Optimización final, agujas restantes, final y resumen.
+
+REGLA DE PACING
+No deben existir tramos de 8-10 minutos donde el jugador solo espere. Si un sistema tarda, debe coexistir con otra decisión: optimizar, colocar, cumplir un Order, investigar o buscar una aguja.
+4. Experiencia inicial, controles y onboarding
+4.1 Inicio
+Nada de una cadena larga de logos, menú, selector y tutorial. El jugador aterriza delante del pajar. El objetivo se entiende visualmente y la primera instrucción cabe en una línea.
+Momento
+Experiencia
+0:00
+Vista del pajar + objetivo: FIND THE NEEDLES.
+0:05
+Prompt contextual: mantener click para recoger paja.
+0:20
+Inventario lleno; flecha visual hacia Sell Station.
+0:30
+Primera venta; dinero visible.
+0:35
+Primer upgrade accesible.
+0:45
+El jugador vuelve al pajar y nota una mejora fuerte.
+
+4.2 Controles PC web
+Input
+Acción
+WASD
+Movimiento
+Mouse
+Cámara
+Click izquierdo
+Usar herramienta / confirmar colocación
+E
+Interactuar / recoger
+Q
+Entrar/salir de Build Mode
+R
+Rotar objeto
+F
+Cambiar modo de snap/routing
+1-6
+Quick slots de herramientas
+Esc
+Pausa / ajustes
+
+4.3 Principios de onboarding
+Tutorial contextual, no modal: enseñar la acción cuando el jugador puede hacerla.
+Cada nuevo sistema debe resolver un problema que el jugador ya haya sentido antes de desbloquearse.
+Mostrar "antes/después" con upgrades fuertes: el jugador debe notar la mejora sin mirar números.
+El Work Tree se abre cuando ya existe una razón para querer más tecnología, no en el primer segundo.
+La primera línea automatizada debe poder construirse con muy pocas piezas para evitar frustración temprana.
+5. Mundo, pajar, paja y agujas
+5.1 Espacio de juego
+Un gran almacén/shed sirve como escenario principal. La run ocurre en un mismo espacio que se transforma: al principio domina el pajar; al final domina la fábrica. La construcción de plataformas y una expansión del almacén pueden abrir espacio sin crear niveles adicionales.
+5.2 Pajar
+Aspecto
+Diseño V1
+Volumen base
+Balance inicial sugerido: ~150.000 unidades virtuales de paja.
+Representación
+Chunks/volúmenes visuales; no una rigidbody por brizna.
+Extracción
+Cada herramienta/máquina consume unidades de un volumen local.
+Feedback
+El pajar debe bajar físicamente, abrir huecos y cambiar silueta.
+Escalabilidad
+La simulación lógica puede manejar millones virtuales sin renderizar cada unidad.
+
+5.3 Agujas
+La V1 contiene 6 agujas. Cada aguja es un milestone, un evento audiovisual y una mejora permanente de la run. No se distribuyen con RNG puro: cada una se coloca dentro de una banda de profundidad para garantizar que la progresión esté repartida.
+Aguja
+Buff propuesto
+Needle 1
++15% capacidad del jugador
+Needle 2
++15% velocidad de conveyors
+Needle 3
++15% velocidad de máquinas
+Needle 4
+-15% consumo eléctrico
+Needle 5
++20% valor de venta
+Needle 6
++20% capacidad de Robotic Arms
+
+DISTRIBUCIÓN CONTROLADA
+Una aguja puede aparecer en cada banda aproximada de profundidad: 0-15%, 15-30%, 30-45%, 45-60%, 60-80% y 80-100%. La posición exacta dentro de la banda sí puede variar por seed.
+6. Economía, Orders y doble progresión
+6.1 Dos monedas con funciones distintas
+Recurso
+Cómo se consigue
+Para qué sirve
+Money
+Venta de raw hay, bales, wrapped bales y Orders.
+Comprar físicamente herramientas, máquinas, infraestructura y duplicados.
+Work Points
+Agujas, Orders y milestones.
+Desbloquear planos y upgrades globales en el Work Tree.
+
+6.2 Regla central: desbloquear no es comprar
+WORK TREE   >   DESBLOQUEAR PLANO   >   SHOP/BUILD MENU   >   PAGAR MONEY   >   OBJETO FÍSICO
+Ejemplo: el jugador paga 4 WP para desbloquear Robotic Arm Plans. A partir de ese momento puede comprar cada Robotic Arm con Money. Después puede gastar más WP en Faster Servos, Bigger Grab o Extended Arm; estas mejoras afectan a todos los brazos presentes y futuros.
+6.3 Orders
+Los Orders evitan que procesar paja sea un sistema decorativo. Sirven para empujar al jugador hacia nuevas máquinas y para entregar Work Points de forma controlada.
+Order ejemplo
+Entrega
+Recompensa orientativa
+Función de diseño
+O-01
+250 Raw Hay
+$100 + 1 WP
+Presenta contratos.
+O-02
+20 Bales
+$450 + 3 WP
+Justifica Compressor.
+O-03
+10 Wrapped Bales
+$1.200 + 5 WP
+Justifica Wrapper.
+O-04
+2.000 Hay escaneados
+$800 + 3 WP
+Empuja Scanner/throughput.
+O-05
+Producción estable 60 s
+$1.500 + 4 WP
+Empuja optimización.
+
+7. Work Tree
+El Work Tree debe parecer grande desde el primer vistazo, aunque la V1 comprima el contenido respecto a la referencia. Objetivo: aproximadamente 80 nodos repartidos en seis ramas. Los planos abren objetos; los upgrades cambian estadísticas globales o desbloquean variantes funcionales.
+A. Player & Tools
+Nodo
+Nodo
+Carry Capacity I
+Carry Capacity II
+Movement Speed I
+Build Distance I
+Shovel Plans
+Wide Shovel
+Quick Scoop
+Bucket Plans
+Bucket Capacity I
+Quick Dump
+Wheelbarrow Plans
+Wheelbarrow Capacity I
+Faster Push
+Pitchfork Plans
+Wider Tines
+Pitchfork Speed I
+Vacuum Tool Plans
+Vacuum Suction I
+Vacuum Range I
+Metal Detector Plans
+Detector Range I
+Detector Precision I
+Directional Signal
+
+
+B. Extraction & Input
+Nodo
+Nodo
+Hopper Plans
+Hopper Capacity I
+Hopper Output I
+Dual Hopper Output
+Piston Rake Plans
+Rake Speed I
+Rake Speed II
+Rake Width I
+Rake Width II
+Stronger Push
+Auto Output
+Industrial Rake
+Robotic Arm Plans
+Arm Speed I
+Arm Speed II
+Arm Reach I
+Arm Reach II
+Arm Grab I
+Arm Grab II
+Fast Rotation
+Smart Targeting
+Robotic Arm MK2
+Vacuum Collector Plans
+Collector Radius I
+Collector Suction I
+Collector Output I
+Power Efficiency
+Industrial Turbine
+
+C. Logistics
+Nodo
+Nodo
+Conveyor Plans
+Belt Speed I
+Belt Speed II
+Belt Capacity I
+Splitter Plans
+Alternating Splitter
+Priority Splitter
+Overflow Splitter
+Merger Plans
+U-Splitter
+U-Merger
+Belt Lift
+Smart Splitter
+Auto Route / Snap+
+
+D. Needle Detection
+Nodo
+Nodo
+Scanner MK1 Plans
+Scan Speed I
+Scan Speed II
+Batch Size I
+Batch Size II
+Scanner Buffer
+Auto Needle Eject
+Scanner MK2 Plans
+Scanner MK2 Speed
+Dual Lane Scan
+
+E. Processing, Storage & Economy
+Nodo
+Nodo
+Compressor Plans
+Compression Speed I
+Compression Speed II
+Batch Efficiency
+Double Chamber
+Bale Value I
+Wrapper Plans
+Wrap Speed I
+Wrap Speed II
+Premium Wrap
+Wrapped Value I
+Silo Plans
+Silo Capacity I
+Silo Capacity II
+Silo Input I
+Silo Output I
+Dual Output
+Raw Hay Value I
+Order Reward I
+
+
+F. Power & Factory
+Nodo
+Nodo
+Hay Generator Plans
+Generator Output I
+Generator Output II
+Bigger Firebox
+Fuel Efficiency I
+Auto Feed
+Industrial Generator
+Power Pole Plans
+Pole Range I
+Pole Range II
+Connection Limit I
+Power Loss Reduction
+Platform Plans
+Stairs Plans
+Warehouse Expansion I
+Factory Build Range I
+
+NOTA DE BALANCE
+La lista anterior define el alcance funcional, no el precio final. Los costes en WP y Money se calibrarán para cumplir el pacing objetivo, no al revés.
+8. Herramientas manuales
+Las herramientas manuales siguen siendo útiles durante toda la run para resolver puntos concretos, limpiar zonas, recuperar piezas o acelerar un atasco. No deben quedar inútiles en cuanto aparece la primera máquina.
+Objeto
+Función
+Upgrades clave
+Ventana
+Hands
+Extraer y recoger al inicio.
+Bigger Grab / Reach
+0-3 min
+Shovel
+Extraer bloques de paja.
+Wide Shovel / Quick Scoop
+3-6
+Bucket
+Transportar y descargar en hopper/máquinas.
+Capacity / Quick Dump
+4-8
+Wheelbarrow
+Transporte masivo antes de belts.
+Capacity / Faster Push
+6-12
+Pitchfork
+Extracción rápida de volumen.
+Wider Tines / Speed
+6-12
+Vacuum Tool
+Extracción continua manual.
+Suction / Range
+8-18
+Metal Detector
+Localización manual de agujas.
+Range / Precision / Direction
+10+
+
+9. Extracción y entrada de material
+9.1 Hay Hopper
+El Hopper es el puente entre el juego manual y el factory game. El jugador puede arrojar paja dentro manualmente; después un brazo, rake u otra máquina puede alimentarlo. Su salida se conecta a un conveyor o se vacía manualmente.
+Upgrade
+Efecto de diseño
+Capacity I
+Permite acumular más paja sin atasco.
+Capacity II
+Buffer mayor para trabajo manual.
+Output I
+Mayor throughput de salida.
+Dual Output
+Permite dos líneas de conveyor.
+
+9.2 Piston Rake
+Primera automatización seria. Se coloca enfrentado al pajar y extrae una franja por ciclo. Debe ser visual, ruidoso y mecánico. Funciona sin conveyor acumulando material en una bandeja; con conveyor conectado pasa a formar una línea autónoma.
+Upgrade
+Cambio
+Rake Speed I-II
+Reduce tiempo de ciclo.
+Rake Width I-II
+Aumenta área afectada.
+Stronger Push
+Más unidades por ciclo.
+Auto Output
+Entrega limpia a belt/hopper.
+Industrial Rake
+Upgrade visual y salto de rendimiento.
+
+9.3 Robotic Arm
+Máquina estrella de la V1. Busca paja dentro de su radio, gira, agarra, vuelve y deposita el material en hopper, máquina o conveyor. La animación debe hacer visible el throughput.
+Upgrade
+Cambio
+Arm Speed I-II
+Movimientos más rápidos.
+Arm Reach I-II
+Radio operativo mayor.
+Arm Grab I-II
+Más paja por ciclo.
+Fast Rotation
+Reduce retorno.
+Smart Targeting
+Prioriza zonas con mayor densidad.
+Robotic Arm MK2
+Mejora visual + throughput global.
+
+9.4 Vacuum Collector
+Late game de extracción. Absorbe automáticamente un área circular del pajar y expulsa el material por una salida. No debe sustituir instantáneamente toda la fábrica: tiene alto consumo y necesita belts/scanners capaces de aceptar su throughput.
+Upgrade
+Cambio
+Radius I
+Más superficie.
+Suction I
+Más unidades/segundo.
+Collector Output I
+Evita atasco interno.
+Power Efficiency
+Reduce consumo.
+Industrial Turbine
+Upgrade final visual y de rendimiento.
+
+10. Logística: conveyors y routing
+Los conveyors son opcionales en el sentido correcto: el jugador puede transportar y alimentar máquinas a mano, pero las cintas eliminan trabajo repetitivo y permiten escalar. Deben ser fáciles de colocar; la complejidad debe venir de diseñar el flujo, no de pelearse con el editor.
+Pieza
+Función
+Mejoras/variantes
+Conveyor
+Transporta material.
+Belt Speed I-II / Capacity I
+Splitter
+1 entrada -> 2 salidas.
+Alternating / Priority / Overflow
+Merger
+2 entradas -> 1 salida.
+U-Merger
+U-Splitter
+División compacta.
+Sin upgrades propios; hereda belt speed.
+Belt Lift
+Sube/baja materiales.
+Hereda belt speed.
+Smart Splitter
+Clasifica por tipo de item.
+Reglas configurables.
+
+10.1 Colocación
+Click inicio -> click final: el sistema genera automáticamente tramos rectos, esquinas y rampas válidas.
+Snap fuerte por defecto; modo No Snap opcional para usuarios avanzados.
+Previsualización ghost verde/roja antes de confirmar.
+Mover y borrar debe devolver la mayor parte del coste para fomentar experimentar.
+No exigir microalineaciones para conectar máquinas: usar puertos de entrada/salida magnéticos.
+10.2 Splitters como gameplay
+Tipo
+Lógica
+Normal
+Reparte 50/50.
+Alternating
+Alterna izquierda/derecha.
+Priority
+Llena primero salida A.
+Overflow
+Usa B solo si A está bloqueada/llena.
+Smart
+Filtra por tipo: hay, bale, wrapped bale, needle.
+
+11. Detección de agujas
+11.1 Metal Detector
+Herramienta manual que proporciona intensidad y dirección, no una coordenada exacta. Permite perseguir la fantasía original incluso si el jugador todavía no automatiza.
+11.2 Scanner MK1
+Se coloca sobre la línea. Tiene throughput limitado: si entra más paja de la que puede escanear, crea acumulación y obliga a mejorar, dividir la línea o añadir un segundo scanner.
+11.3 Scanner MK2
+Versión late game con mejor velocidad, batch y auto-eject. Debe cambiar visualmente: más módulos, luces y una salida física específica para agujas.
+Upgrade
+Función
+Scan Speed I-II
+Más unidades/segundo.
+Batch Size I-II
+Más unidades por ciclo.
+Scanner Buffer
+Tolera picos de entrada.
+Auto Needle Eject
+Separa aguja automáticamente.
+Scanner MK2
+Salto de capacidad + aspecto.
+Dual Lane Scan
+Procesa dos carriles o duplica throughput.
+
+REGLA
+El scanner nunca debe "fallar" una aguja por probabilidad. La tensión viene de throughput y routing, no de una precisión aleatoria frustrante.
+12. Procesado, almacenamiento y venta
+12.1 Rutas del recurso
+RAW HAY   >   SELL / GENERATOR   >   COMPRESSOR   >   BALE   >   WRAPPER   >   WRAPPED BALE
+El jugador decide qué porcentaje del recurso vende, quema para electricidad o procesa para obtener más valor. Solo hay dos transformaciones industriales en V1 para concentrar la profundidad en automatización y routing.
+12.2 Compressor / Baler
+Upgrade
+Efecto
+Compression Speed I-II
+Aumenta throughput.
+Batch Efficiency
+Consume menos hay por bale o produce mejor ratio.
+Double Chamber
+Procesa dos batches.
+Bale Value I
+Incrementa valor económico.
+
+12.3 Wrapper
+Upgrade
+Efecto
+Wrap Speed I-II
+Más bales/segundo.
+Premium Wrap
+Desbloquea aspecto/valor superior.
+Wrapped Value I
+Mayor valor de venta.
+
+12.4 Silo
+Buffer físico que evita que una máquina lenta bloquee toda la cadena. Debe mostrar visualmente nivel de llenado.
+Upgrade
+Efecto
+Capacity I-II
+Mayor buffer.
+Silo Input I
+Acepta picos más grandes.
+Silo Output I
+Descarga más rápido.
+Dual Output
+Alimenta dos líneas.
+
+13. Electricidad y red de potencia
+La electricidad añade gestión sin convertirse en un simulador eléctrico. Las máquinas avanzadas consumen potencia; el jugador genera energía quemando parte de la paja, creando una decisión entre dinero, procesado y electricidad.
+Máquina
+Consumo base orientativo
+Piston Rake
+10 P
+Robotic Arm
+15 P
+Scanner MK1
+20 P
+Compressor
+25 P
+Wrapper
+30 P
+Vacuum Collector
+50 P
+
+13.1 Hay Generator
+Upgrade
+Efecto
+Generator Output I-II
+Más potencia máxima.
+Bigger Firebox
+Mayor buffer de combustible.
+Fuel Efficiency I
+Menos hay por unidad de energía.
+Auto Feed
+Acepta conveyor/hopper directamente.
+Industrial Generator
+Upgrade final visual + capacidad.
+
+13.2 Power Poles
+Red simplificada: cada máquina dentro del radio o conectada al polo recibe energía. Upgrades globales aumentan alcance, número de conexiones y reducen pérdidas/penalización.
+SOBRECARGA
+Si la demanda supera la capacidad, no apagar todo de golpe: reducir progresivamente la velocidad global. El jugador ve 145/100 P y entiende por qué la fábrica se ha ralentizado.
+14. Cuellos de botella y automatización
+El factory game vive de detectar y resolver el siguiente cuello de botella. La V1 debe estar balanceada para que cada nueva mejora cree temporalmente otro problema en una parte distinta de la línea.
+Situación
+Problema
+Respuesta del jugador
+4 Arms producen 160 hay/s
+Belt solo mueve 100/s
+Belt Speed II o segunda línea.
+Belt mueve 160/s
+Scanner procesa 80/s
+Splitter + 2 scanners o Scan Speed.
+Scanners procesan 160/s
+Compressor acepta 100/s
+Silo + Compressor upgrade.
+Nueva línea aumenta consumo
+145/100 Power
+Generator upgrade o menos máquinas.
+Wrapper se queda sin bales
+Compressor insuficiente
+Double Chamber / segundo Compressor.
+
+REGLA DE DISEÑO
+Una máquina nueva no es solo "más producción". Debe alterar el equilibrio del sistema y crear una decisión visible de routing, energía, buffer o throughput.
+15. UI/UX, feedback y game feel
+15.1 HUD
+Elemento
+Comportamiento
+Money / WP
+Siempre visible, compacto.
+Needles
+Contador 0/6 + buff activo.
+Power
+Visible cuando se desbloquea energía.
+Tool/Capacity
+Contextual.
+Current Order
+Una línea con progreso.
+Machine tooltip
+Input, output, rate, power y estado al apuntar.
+
+15.2 Pantallas
+Work Tree: mapa visual grande, seis ramas, dependencias claras y preview de coste/efecto.
+Build Shop: objetos ya desbloqueados; precio, consumo y throughput antes de colocar.
+Orders Board: máximo 3-4 pedidos visibles para no convertirlo en quest log.
+Final Run Summary: tiempo, agujas, dinero, throughput máximo, energía pico y tamaño de fábrica.
+15.3 Game feel
+Cada upgrade importante debe cambiar sonido, velocidad, animación o aspecto; no quedarse solo en un número.
+Encontrar una aguja: scanner se detiene, luz/alarma breve, separación física y presentación del buff.
+Belts deben transmitir velocidad con movimiento legible de items; evitar cientos de rigidbodies reales.
+Pajar: partículas ligeras, pequeñas nubes y deformación del volumen al extraer.
+Máquinas con estados claros: working, waiting input, output blocked, no power, overloaded.
+16. Balance inicial y objetivos de pacing
+Los números siguientes son un punto de partida para prototipo. El objetivo es conseguir sensaciones y tiempos; no deben considerarse balance final.
+Objeto
+Coste $ inicial
+Throughput base
+Power
+Hopper
+120
+40 hay/s
+0
+Piston Rake
+350
+15 hay/s
+10
+Conveyor / tramo
+20
+50 hay/s
+0
+Robotic Arm
+750
+10 hay/s
+15
+Scanner MK1
+900
+60 hay/s
+20
+Compressor
+1.100
+70 hay/s
+25
+Silo
+650
+Buffer 2.500
+0
+Wrapper
+1.800
+1 bale/s
+30
+Vacuum Collector
+3.000
+50 hay/s
+50
+Scanner MK2
+3.500
+180 hay/s
+40
+
+16.1 Objetivos de ritmo
+Métrica
+Objetivo
+Primer input
+< 10 s
+Primera venta
+< 45 s
+Primer upgrade
+< 60 s
+Primer objeto automático
+15-20 min
+Primer conveyor
+20-25 min
+Primer scanner
+30-38 min
+Primera línea industrial completa
+40-50 min
+Run completa
+50-70 min
+Tramo sin decisión nueva
+Ideal < 5 min; nunca > 8-10 min
+
+17. Arquitectura técnica para web
+17.1 Principio
+SIMULAR EL RESULTADO, NO CADA BRIZNA
+El jugador debe percibir millones de unidades, pero el motor no debe crear millones de GameObjects/rigidbodies. La escala se representa con chunks, instancing, partículas y una simulación lógica desacoplada.
+17.2 Sistemas técnicos
+Sistema
+Enfoque V1
+Pajar
+Grid/chunks volumétricos con contador virtual de hay.
+Paja visual
+Instancing/particles; densidad visual desacoplada de unidades lógicas.
+Belts
+Slots/lanes lógicos + objetos visuales pooled; sin física completa.
+Máquinas
+Tick de simulación fijo; animación interpolada.
+Needles
+Seed + bandas de profundidad; entidad real solo al quedar expuesta/eject.
+Save
+Estado de pile, dinero, WP, Work Tree, objetos colocados, upgrades y needles.
+Construcción
+Puertos magnéticos y routing automático.
+Rendimiento
+LOD, pooling, culling y límites de efectos.
+
+17.3 Motor
+Recomendación actual: Godot 4 con Web export, siempre probando el build web desde los primeros prototipos. La arquitectura de simulación debe permanecer lo bastante desacoplada para que el cuello de botella sea el render/simulación, no el número conceptual de unidades de paja.
+18. Analytics y criterios de validación
+18.1 Funnel mínimo
+Evento
+Qué responde
+game_loaded
+Carga y compatibilidad.
+first_hay_grab
+¿Entiende el primer input?
+first_sale
+¿Entiende economía?
+first_upgrade
+¿Entra en progresión?
+work_tree_opened
+¿Descubre la capa tecnológica?
+first_auto_machine
+¿Llega a automatización?
+first_conveyor
+¿Usa logística?
+first_scanner
+¿Llega al core de detección?
+first_needle
+¿Cuándo recibe el primer payoff?
+factory_10_machines
+¿Escala?
+run_complete
+Completion y duración.
+quit_state
+En qué sistema abandona.
+
+18.2 Qué validar en playtests
+¿El jugador entiende por qué un conveyor es útil sin que se le obligue a usarlo?
+¿Los cuellos de botella se leen o parecen bugs?
+¿Las mejoras globales de máquinas se sienten fuertes?
+¿Hay demasiadas decisiones a la vez al abrir el Work Tree?
+¿La primera aguja llega lo bastante pronto como para confirmar la fantasía?
+¿El tramo final mantiene decisiones o se convierte en espera?
+¿El jugador termina con una fábrica visualmente espectacular respecto al minuto 0?
+19. Scope V1, fuera de alcance y Definition of Done
+19.1 Scope V1 - Complete Run
+Área
+Incluido
+Herramientas
+Hands, Shovel, Bucket, Wheelbarrow, Pitchfork, Vacuum Tool, Metal Detector
+Extracción/entrada
+Hopper, Piston Rake, Robotic Arm, Vacuum Collector
+Logística
+Conveyor, Splitter, Merger, Alternating/Priority/Overflow, U variants, Belt Lift, Smart Splitter
+Detección
+Scanner MK1 y MK2
+Procesado
+Compressor/Baler y Wrapper
+Storage
+Silo
+Power
+Hay Generator + Power Poles
+Progresión
+Money + Work Points + ~80 nodos Work Tree
+Objetivo
+6 needles + buffs + completion
+Meta de sesión
+Orders + run summary + save
+
+19.2 Fuera de V1
+Drones y robots móviles autónomos.
+Paper, pulp, pellets, eco-bricks y cadenas industriales adicionales.
+Construcción decorativa amplia: casas, paredes, techos y decoración compleja.
+Multiplayer.
+Prestige / rebirth.
+Biomas o múltiples mapas completos.
+300 upgrades.
+Agricultura o producción de nueva paja.
+Sistemas avanzados de agua/borehole si no alimentan directamente el loop V1.
+19.3 Definition of Done
+1.  La run completa puede terminarse de principio a fin sin comandos de debug.
+2.  Un jugador nuevo puede empezar sin tutorial externo.
+3.  Existe progresión manual -> automatización -> factory complejo.
+4.  Todos los objetos P0 tienen feedback claro y al menos dos mejoras o una evolución funcional.
+5.  Work Tree, Build Shop y compra física están separados y funcionan con WP/Money.
+6.  Conveyors no son obligatorios para la primera interacción con una máquina, pero sí ofrecen automatización real.
+7.  Los seis needles pueden encontrarse manualmente o mediante automatización y cada uno aplica su buff.
+8.  El tramo final mantiene decisiones de throughput/power/routing hasta cerca del completion.
+9.  Save/load conserva la fábrica y la progresión.
+10.  El build web mantiene rendimiento jugable en el hardware objetivo sin simular paja individual.
+20. Riesgos de diseño y mitigaciones
+Riesgo
+Por qué importa
+Mitigación
+Demasiado parecido a la referencia
+Riesgo creativo/comercial y menor diferenciación.
+Arte, UI, layout, nombres, balance y contenido propios; añadir identidad propia en needles, Orders y presentación.
+Conveyors frustrantes
+El jugador abandona antes de descubrir la profundidad.
+Snap fuerte, auto-route y puertos magnéticos.
+Late game pasivo
+Se convierte en esperar a que desaparezca el pajar.
+Desbloqueos tardíos, bottlenecks deliberados, Orders y upgrades hasta minuto 60.
+Work Tree abrumador
+Muchos nodos sin entender su valor.
+Ramas progresivas, dependencias y preview de efecto.
+Rendimiento web
+Factory grande y partículas pueden saturar CPU/GPU.
+Simulación lógica, pooling, LOD, culling, límites de ítems visuales.
+Máquinas obsoletas
+El jugador deja de usar sistemas enteros.
+Roles distintos, upgrades globales y Orders que reutilizan productos.
+Economía rota
+Una estrategia domina y anula decisiones.
+Separar WP/Money y balancear sell/power/process como trade-off.
+
+
+Anexo A. Catálogo consolidado de objetos y upgrades
+Objeto
+Rol
+Mejoras asociadas
+Shovel
+Manual extraction
+Wide Shovel; Quick Scoop
+Bucket
+Manual logistics
+Capacity I; Quick Dump
+Wheelbarrow
+Manual logistics
+Capacity I; Faster Push
+Pitchfork
+Manual extraction
+Wider Tines; Speed I
+Vacuum Tool
+Manual extraction
+Suction I; Range I
+Metal Detector
+Detection
+Range I; Precision I; Directional Signal
+Hopper
+Input/buffer
+Capacity I; Output I; Dual Output
+Piston Rake
+Auto extraction
+Speed I-II; Width I-II; Stronger Push; Auto Output; Industrial Rake
+Robotic Arm
+Auto extraction
+Speed I-II; Reach I-II; Grab I-II; Fast Rotation; Smart Targeting; MK2
+Vacuum Collector
+Auto extraction
+Radius I; Suction I; Output I; Efficiency; Industrial Turbine
+Conveyor
+Logistics
+Speed I-II; Capacity I
+Splitter
+Logistics
+Alternating; Priority; Overflow; U-Splitter
+Merger
+Logistics
+U-Merger
+Belt Lift
+Logistics
+Inherits belt upgrades
+Smart Splitter
+Logistics
+Configurable item rules
+Scanner MK1
+Detection
+Speed I-II; Batch I-II; Buffer; Auto Eject
+Scanner MK2
+Detection
+MK2 Speed; Dual Lane Scan
+Compressor
+Processing
+Speed I-II; Batch Efficiency; Double Chamber; Bale Value
+Wrapper
+Processing
+Speed I-II; Premium Wrap; Value I
+Silo
+Storage
+Capacity I-II; Input I; Output I; Dual Output
+Hay Generator
+Power
+Output I-II; Bigger Firebox; Efficiency; Auto Feed; Industrial Generator
+Power Pole
+Power
+Range I-II; Connection Limit; Loss Reduction
+Platform / Stairs
+Factory construction
+Warehouse Expansion; Build Range
+Sell Station
+Economy
+Raw Hay Value I
+Order Board / Dock
+Economy/progression
+Order Reward I
+
+Anexo B. Fuentes de referencia
+Estas fuentes se usan para estudiar la estructura del producto de referencia y las restricciones de plataforma; no para copiar assets, textos, UI o contenido propietario.
+Fuente
+URL
+Steam - Find The Needle
+https://store.steampowered.com/app/5160800/Find_The_Needle/
+Steam - Find The Needle Demo
+https://store.steampowered.com/app/5165210/Find_The_Needle_Demo/
+Steam Community - updates
+https://steamcommunity.com/app/5160800/
+SteamDB - demo charts
+https://steamdb.info/app/5165210/charts/
+CrazyGames - Developer Requirements
+https://docs.crazygames.com/requirements/intro/
+CrazyGames - Gameplay / Quality
+https://docs.crazygames.com/requirements/gameplay/
+CrazyGames - Technical
+https://docs.crazygames.com/requirements/technical/
+
+Decisión pendiente después de este GDD
+El siguiente documento de producción debería ser una hoja de balance: costes en Money/WP, throughput por nivel, power, rewards de Orders y tiempos de desbloqueo. Su objetivo será convertir este diseño en una curva jugable de 50-70 minutos antes de empezar a producir contenido visual definitivo.

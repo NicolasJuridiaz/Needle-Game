@@ -1,0 +1,17 @@
+# Design decisions & deviations from the GDD
+
+Every significant deviation from `GDD_Project_Needle_V1.docx` is recorded here with its rationale.
+
+| # | GDD | Decision | Why |
+|---|-----|----------|-----|
+| D1 | §17.3 recommends Godot 4 (web export) | **TypeScript + three.js + Vite** | Repo was empty and Godot is not installed. Native web stack: ~1–3 MB download vs ~10 MB+ Godot wasm, instant load (CrazyGames initial download ≤ 20 MB for mobile homepage), no SharedArrayBuffer headaches, headless Node simulation for automated balance playthroughs, and direct browser testing. Keeps the GDD's architecture (decoupled sim, chunks, instancing). |
+| D2 | Pacing table: Piston Rake 16–19, Generator 19–22 | Generator plans are a prerequisite of the Rake (unlocked together ~15–19 min) | GDD §13 gives the rake 10 P of consumption, so it cannot run before power exists. Early generator is fed by hand (stoking) — a strong semi-manual phase that sets up the sell/burn trade-off early. |
+| D3 | Sell Station and Order Board/Dock as separate objects | **Market Chute** sells everything and every delivery counts towards matching Orders; the Order Board is a wall display | Avoids "deliver here or sell there?" friction and duplicated belt destinations. Orders stay goals (deliver 20 bales, scan 2,000 hay, stable 40 hay/s...). |
+| D4 | Splitter types Normal / Alternating / Priority / Overflow | One Splitter building with unlockable **modes**: Even (skips blocked outputs), Alternating (strict 1:1), Priority (2:1 weighted), Overflow (sides only when primary blocked), Smart (item filter) | In a discrete item sim "Priority: fill A first" and "Overflow: B only when A blocked" are identical; making Priority a weighted split keeps both nodes meaningful. Modes on one building = fewer shop items, same depth. |
+| D5 | U-Splitter / U-Merger undefined | Compact **lane** splitter/merger (1 lane ↔ 2 parallel lanes, 1×2 footprint) | Fits "División compacta"; directly useful to feed two scanners side by side. |
+| D6 | ~80 Work Tree nodes (GDD lists 111 rows) | **94 nodes / 109 purchasable levels**: "Speed I–II" style pairs are one node with 2 levels | Tree looks big and readable (~94 cards) while keeping every GDD upgrade. |
+| D7 | Needle buff per needle index | Buffs granted in **discovery order** (1st found = +15% carry, ...) | Guarantees early buffs affect early systems regardless of which needle is found first. |
+| D8 | Unscanned needle behaviour unspecified | Manual extraction finds needles instantly; machine-extracted needles travel hidden in hay packets; scanners detect deterministically; an unscanned needle reaching a sell/generator/compressor is **tossed back onto the pile** | Scanners matter, no RNG misses (GDD §11 rule), and needles can never be lost (no softlock). |
+| D9 | Wheelbarrow as a tool | Pushable **world object**: park it, dig (overflow fills the barrow), push it (E) to sell/hopper | Physical, readable, avoids an awkward "equip a container" slot; keeps hotbar 1–6 as in GDD controls. |
+| D10 | Level/building heights | Two build levels (floor + 2.5 m elevated). Elevated belts on stilts need no platform; machines on level 1 need platforms | Enables Belt Lift / ramps / crossing lines / platforms (GDD P0) without a full 3D voxel builder. |
+| D11 | Mobile | Desktop (mouse + keyboard) only in V1; touch devices get a notice | First-person factory building needs precise pointer input; CrazyGames allows desktop-only submission. |

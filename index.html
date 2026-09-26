@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Project Needle</title>
+    <meta name="description" content="Start with your bare hands. End with an absurd hay-processing factory. Find the 6 needles." />
+    <!-- CrazyGames SDK v3 (must load before game code; the game works without it). -->
+    <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
+    <style>
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #14110d;
+        -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
+        -webkit-touch-callout: none; touch-action: none; }
+      #game { position: fixed; inset: 0; }
+      #ui { position: fixed; inset: 0; pointer-events: none; }
+      #boot { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: radial-gradient(ellipse at 50% 60%, #3a2c16 0%, #14110d 70%); color: #f2c14e;
+        font: 700 14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; letter-spacing: .12em; z-index: 50; }
+      #boot .t { font-size: 34px; letter-spacing: .18em; margin-bottom: 18px; text-shadow: 0 2px 0 #000; }
+      #boot .bar { width: 240px; height: 8px; border-radius: 4px; background: #2c241a; overflow: hidden; box-shadow: inset 0 1px 2px #000; }
+      #boot .bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #d99a2b, #f2c14e); transition: width .2s; }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="ui"></div>
+    <div id="boot"><div class="t">PROJECT NEEDLE</div><div class="bar"><i id="bootbar"></i></div></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "project-needle",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Project Needle - first-person incremental factory game for the web (CrazyGames).",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "balance": "vite-node tools/balance/runBalance.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/three": "^0.186.0",
+    "typescript": "~5.9.3",
+    "vite": "^8.0.0",
+    "vite-node": "*",
+    "vitest": "^5.0.0"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  }
+}
