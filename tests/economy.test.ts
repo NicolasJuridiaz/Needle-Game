@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../src/config/balance';
-import { BUILDABLES, LOGISTICS_TYPES } from '../src/config/buildables';
+import { BUILDABLES } from '../src/config/buildables';
 import { ITEMS } from '../src/config/items';
 import { MILESTONES } from '../src/config/milestones';
 import { NEEDLE_BUFFS } from '../src/config/needles';

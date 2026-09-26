@@ -89,6 +89,10 @@ export class Sim implements SimContext {
   stat(key: string): number { return this.progress.stat(key); }
 
   needleSlipped(needleId: number, where: BuildingType, _pos: Vec3): void {
+    // A needle that is already found stays found (never resurrected into the pile), even if a stale copy of
+    // its id was still riding in a packet.
+    const n = this.hay.needles.find((q) => q.id === needleId);
+    if (!n || n.status === 'found') return;
     const p = this.hay.tossBack(needleId);
     this.progress.stats.needlesReturned++;
     this.events.emit('needle:returned', { id: needleId, pos: p, where });

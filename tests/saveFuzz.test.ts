@@ -141,7 +141,7 @@ describe('save fuzz: repeated save/load of a real factory', () => {
         expect(Math.abs(after.hay - before.hay) / before.hay, `cycle ${c} hay total`).toBeLessThan(0.001);
         expect(after.stats, `cycle ${c} run stats`).toEqual(before.stats);
         expect(after.stableRate, `cycle ${c} stable delivery rate`).toBeCloseTo(before.stableRate, 6);
-        expectNeedleInvariant(loaded, `cycle ${c}`);
+        expectNeedleInvariant(loaded, `cycle ${c}`, { staleFoundOk: true });
 
         // ---- save -> load -> save is byte-identical (except savedAt)
         const again = JSON.stringify(Sim.fromSave(JSON.parse(text)).serialize());

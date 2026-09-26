@@ -157,9 +157,12 @@ export function needleHolders(sim: Sim): { where: string; id: number }[] {
 
 /**
  * Needle invariant: every needle is found | buried | exposed, or inTransit and held by EXACTLY one holder.
- * Found / buried / exposed needles are never held by anything, and found needles are the progression's list.
+ * Buried / exposed needles are never held by anything, and found needles are exactly the progression's list.
+ * Found needles are never held either, unless `staleFoundOk`: the balance bot calls `sim.foundNeedle()` on a
+ * needle it saw exposed 0.5 s earlier, so a machine may have scooped it meanwhile (a bot bug, reported); such a
+ * stale id must stay harmless (the needle stays found - see Sim.needleSlipped).
  */
-export function expectNeedleInvariant(sim: Sim, label = ''): void {
+export function expectNeedleInvariant(sim: Sim, label = '', opts: { staleFoundOk?: boolean } = {}): void {
   const holders = needleHolders(sim);
   const count = new Map<number, string[]>();
   for (const h of holders) { const l = count.get(h.id) ?? []; l.push(h.where); count.set(h.id, l); }
@@ -167,7 +170,7 @@ export function expectNeedleInvariant(sim: Sim, label = ''): void {
     const held = count.get(n.id) ?? [];
     if (n.status === 'inTransit') {
       expect(held.length, `${label} needle ${n.id} inTransit must be held exactly once (held by: ${held.join(', ') || 'nobody'})`).toBe(1);
-    } else {
+    } else if (!(n.status === 'found' && opts.staleFoundOk)) {
       expect(held, `${label} needle ${n.id} is ${n.status} but still held`).toEqual([]);
     }
     expect(n.status === 'found', `${label} needle ${n.id} found flag vs progression`).toBe(sim.progress.needlesFound.includes(n.id));

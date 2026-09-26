@@ -31,7 +31,6 @@ const WHEELBARROW_GRAB_RANGE = 2.5;
 const WHEELBARROW_WALL_MARGIN = 0.75;
 /** Minimum time (s) between two `player:full` events. */
 const FULL_EVENT_INTERVAL = 1;
-const EPS = 1e-6;
 /**
  * The carry counts as full within this many hay units: digging works on float32 hay heights, so a scoop sized
  * to the free room lands ~1e-5 short of it and a smaller scoop removes nothing (the player would never be told).

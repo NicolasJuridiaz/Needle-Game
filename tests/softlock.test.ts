@@ -293,6 +293,42 @@ describe('softlock: needles are never lost', () => {
     for (const n of sim.hay.needles) expect(['buried', 'exposed']).toContain(n.status);
   });
 
+  it('a needle marked found while a machine still carries it is never tossed back into the pile (stale-reference race)', () => {
+    // The balance bot saw a needle 'exposed', waited 0.5 s, then called foundNeedle(): meanwhile a machine had
+    // scooped it. The stale id then rode a packet into the chute, which used to resurrect the found needle.
+    const sim = new Sim(810);
+    parkPlayer(sim);
+    unlock(sim, ['l_conveyor', 'f_generator']);
+    rich(sim);
+    const belt = place(sim, 'conveyor', -20, -18, 2);
+    for (let x = -21; x > -29; x--) place(sim, 'conveyor', x, -18, 2);
+    for (let z = -18; z <= 4; z++) place(sim, 'conveyor', -29, z, 1);
+    place(sim, 'conveyor', -29, 5, 2);
+    const gen = place(sim, 'hayGenerator', -24, -14, 0);
+    sim.rebuildTopology();
+    const ev = tally(sim, ['needle:returned', 'toast', 'needle:found']);
+    const n = sim.hay.needles[2];
+    n.status = 'inTransit'; // scooped by a machine ...
+    expect(feed(sim, belt, 0, { type: 'hay', amount: 10, needleId: 2 })).toBe(1);
+    sim.foundNeedle(2, 'detector', n.pos); // ... while a stale caller marks it found
+    expect(n.status).toBe('found');
+    run(sim, 20);
+    expect(sim.logistics.itemCount()).toBe(0);
+    expect(n.status, 'found needle not resurrected').toBe('found');
+    expect(sim.progress.stats.needlesReturned).toBe(0);
+    expect(ev['needle:returned'].length).toBe(0);
+    expect(ev['needle:found'].length).toBe(1);
+    // Same through a generator's firebox.
+    const n3 = sim.hay.needles[3];
+    n3.status = 'inTransit';
+    sim.player.carry.add('hay', 30, [3]);
+    expect(gen.interact(sim)).toBe(true);
+    sim.foundNeedle(3, 'manual', n3.pos);
+    run(sim, 60);
+    expect(n3.status).toBe('found');
+    expect(sim.progress.stats.needlesReturned).toBe(0);
+  });
+
   it('during a full bot run (build, move, demolish, scan, slip) every needle is always found, in the world, or held exactly once', () => {
     const bot = new Bot({ seed: 4242, maxMinutes: 45, humanFactor: 1.15, verbose: false });
     const sim = bot.sim;
@@ -301,11 +337,11 @@ describe('softlock: needles are never lost', () => {
     let checks = 0;
     sim.tick = (dt: number) => {
       tick(dt);
-      if (++k % 97 === 0) { expectNeedleInvariant(sim, `t=${sim.time.toFixed(1)}`); checks++; }
+      if (++k % 97 === 0) { expectNeedleInvariant(sim, `t=${sim.time.toFixed(1)}`, { staleFoundOk: true }); checks++; }
     };
     const ev = tally(sim, ['building:removed', 'building:moved', 'needle:returned', 'needle:found']);
     bot.run();
-    expectNeedleInvariant(sim, 'end');
+    expectNeedleInvariant(sim, 'end', { staleFoundOk: true });
     expect(checks).toBeGreaterThan(100);
     console.info(`[needle invariant] ${checks} checks over ${Math.round(sim.time / 60)} min; moved ${ev['building:moved'].length}, `
       + `removed ${ev['building:removed'].length}, needles found ${ev['needle:found'].length}, slipped back ${ev['needle:returned'].length}`);
@@ -498,6 +534,6 @@ describe('softlock: saves taken in awkward states load and recover', () => {
     const m0 = s2.progress.money;
     handTrip(s2);
     expect(s2.progress.money).toBeGreaterThan(m0);
-    expectNeedleInvariant(s2, 'bot save');
+    expectNeedleInvariant(s2, 'bot save', { staleFoundOk: true });
   }, 120_000);
 });
