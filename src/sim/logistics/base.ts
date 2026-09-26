@@ -1,3 +1,4 @@
+import { BALANCE } from '../../config/balance';
 import { Building, type BuildingInfo, type InfoLine } from '../building';
 import type { SimContext } from '../interfaces';
 import { Inventory } from '../inventory';
@@ -71,14 +72,24 @@ export abstract class LogisticsBuilding extends Building implements LaneOwner {
 
   override canAccept(_item: ItemPacket, port: number, ctx: SimContext): boolean {
     const lane = this.inLane(port);
-    return !!lane && lane.hasRoom(ctx.stat('belt.spacing'));
+    if (!lane) return false;
+    const d = ctx.stat('belt.spacing');
+    return lane.hasRoomWithin(d, lane.speed(ctx.stat('belt.speed'), d) * BALANCE.tickDt);
   }
 
   override accept(item: ItemPacket, port: number, ctx: SimContext): void {
     const lane = this.inLane(port);
     if (!lane) return;
     const it = acquireItem(item);
-    if (lane.insert(it, 0, ctx.stat('belt.spacing'), logiClock.tick) === REFUSED) {
+    const d = ctx.stat('belt.spacing');
+    const at = lane.entryPos(d);
+    if (at < 0) {
+      // Enters just behind the entry (it had room during this tick); it moves forward on the next step.
+      it.s = at;
+      it.stamp = logiClock.tick;
+      lane.items.push(it);
+      lane.posAt(0, it);
+    } else if (lane.insert(it, 0, d, logiClock.tick) === REFUSED) {
       // Caller skipped canAccept: force it in at the entry so the packet is never lost.
       it.s = Math.min(0, lane.items.length ? lane.items[lane.items.length - 1].s - lane.spacing(ctx.stat('belt.spacing')) : 0);
       it.stamp = logiClock.tick;

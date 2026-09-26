@@ -186,15 +186,15 @@ export class Compressor extends ProcessingMachine {
         if (ch.hay <= EPS && i < nCh && this.buffer.hay >= per - EPS) {
           this.slipped.length = 0;
           ch.hay = this.buffer.consume(per, this.slipped);
-          ch.t = 0;
+          // ch.t keeps the leftover of the previous cycle (< one tick of progress): no rounding to ticks.
           if (this.slipped.length) slipNeedles(ctx, this.slipped, this, this.centre);
         }
         if (ch.hay <= EPS) continue;
         working = true;
-        if (ch.t < 1) ch.t = Math.min(1, ch.t + (dt * sf) / cyc);
+        if (ch.t < 1) ch.t += (dt * sf) / cyc;
         if (ch.t >= 1) {
-          if (this.emitProduct(ctx)) { ch.hay = 0; ch.t = 0; }
-          else stalled = true;
+          if (this.emitProduct(ctx)) { ch.hay = 0; ch.t = Math.min(ch.t - 1, 0.999); }
+          else { stalled = true; ch.t = 1; }
         }
         if (ch.hay > EPS) press = Math.max(press, Math.sin(Math.PI * ch.t));
       }
@@ -314,13 +314,14 @@ export class Wrapper extends ProcessingMachine {
     let spinning = false;
     if (this.powerGate(ctx)) {
       const sf = this.speedFactor(ctx);
-      if (!this.hasBale && this.inBales >= 1 - EPS) { this.inBales = Math.max(0, this.inBales - 1); this.hasBale = true; this.t = 0; }
+      // this.t keeps the leftover of the previous cycle (< one tick of progress): no rounding to ticks.
+      if (!this.hasBale && this.inBales >= 1 - EPS) { this.inBales = Math.max(0, this.inBales - 1); this.hasBale = true; }
       let stalled = false;
       if (this.hasBale) {
-        if (this.t < 1) { this.t = Math.min(1, this.t + (dt * sf) / Math.max(0.01, ctx.stat('wrapper.cycle'))); spinning = true; }
+        if (this.t < 1) { this.t += (dt * sf) / Math.max(0.01, ctx.stat('wrapper.cycle')); spinning = true; }
         if (this.t >= 1) {
-          if (this.emitProduct(ctx)) { this.hasBale = false; this.t = 0; }
-          else { stalled = true; spinning = false; }
+          if (this.emitProduct(ctx)) { this.hasBale = false; this.t = Math.min(this.t - 1, 0.999); }
+          else { stalled = true; spinning = false; this.t = 1; }
         }
       }
       this.updateStatus(ctx, dt, stalled, this.hasBale || this.inBales >= 1);
@@ -371,7 +372,8 @@ export class Wrapper extends ProcessingMachine {
     const o = obj(raw);
     this.inBales = Math.floor(num(o.inBales, 0, 0) + EPS);
     this.hasBale = o.hasBale === true;
-    this.t = this.hasBale ? Math.min(1, num(o.t, 0, 0)) : 0;
+    // t carries the sub-tick leftover of the previous wrap even while idle.
+    this.t = Math.min(1, num(o.t, 0, 0));
     this.out = Math.min(PRODUCT_QUEUE_MAX, Math.floor(num(o.out, 0, 0)));
     this.anim.spin = num(o.spin, 0);
   }

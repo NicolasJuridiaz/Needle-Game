@@ -28,10 +28,13 @@ const GRAB_WIDE_RADIUS = 0.9;
 /** Closest target (m) from the pedestal axis. */
 const MIN_TARGET_RADIUS = 0.8;
 /**
- * With nothing linked at the drop point the hay is dumped on the floor in front; targets closer than
- * this (drop point + spread of the dumped heap) are ignored so the arm never re-grabs its own heap.
+ * With nothing linked at the drop point the hay is dumped on the floor in front. So that the arm never re-grabs
+ * its own heap (and never has it credited as extraction again), it then ignores targets closer than this and
+ * only picks from cells at least UNLINKED_BEHIND metres behind its pedestal axis: the heap spreads around the
+ * drop point in front, and relaxing hay cannot flow through the pedestal.
  */
 const UNLINKED_MIN_RADIUS = 2.3;
+const UNLINKED_BEHIND = 0.5;
 /** Claw heights (m above the arm's floor) while travelling / when dropping / at most. */
 const TRAVEL_HEIGHT = 2.2;
 const DROP_HEIGHT = 1.3;
@@ -133,9 +136,13 @@ export class RoboticArm extends Machine {
   /** Choose the next hay target and start rotating towards it. */
   private pickTarget(ctx: SimContext): boolean {
     const reach = ctx.stat('arm.reach');
-    const minR = ctx.logistics.isLinked(this, 0) ? MIN_TARGET_RADIUS : UNLINKED_MIN_RADIUS;
+    const linked = ctx.logistics.isLinked(this, 0);
+    const minR = linked ? MIN_TARGET_RADIUS : UNLINKED_MIN_RADIUS;
     if (reach < minR) return false;
-    const target = ctx.hay.findTarget(this.cx, this.cz, reach, ctx.stat('arm.smart') >= 1 ? 'densest' : 'nearest', minR);
+    const mode = ctx.stat('arm.smart') >= 1 ? 'densest' : 'nearest';
+    const target = linked
+      ? ctx.hay.findTarget(this.cx, this.cz, reach, mode, minR)
+      : ctx.hay.findTarget(this.cx, this.cz, reach, mode, minR, { fx: this.fx, fz: this.fz, margin: UNLINKED_BEHIND });
     if (!target) return false;
     const dx = target.x - this.cx;
     const dz = target.z - this.cz;

@@ -157,6 +157,22 @@ export class Lane {
   }
 
   /**
+   * Room for a packet pushed in by a machine this tick: the last item only has to clear the spacing within
+   * one tick of movement (`step` = speed x dt). Without this, machine -> belt entry is quantised to whole
+   * ticks and belt upgrades lose part of their effect.
+   */
+  hasRoomWithin(d: number, step: number): boolean {
+    const n = this.items.length;
+    return n === 0 || this.items[n - 1].s - this.spacing(d) >= -step - ENTRY_EPS;
+  }
+
+  /** Entry position for a packet accepted through {@link hasRoomWithin} (may be slightly behind 0). */
+  entryPos(d: number): number {
+    const n = this.items.length;
+    return n === 0 ? 0 : Math.min(0, this.items[n - 1].s - this.spacing(d));
+  }
+
+  /**
    * Append `it` at the entry, `carry` tiles in (clamped by the spacing to the last item).
    * Returns its position or {@link REFUSED}. Marks the item as moved in logistics tick `tick`.
    */

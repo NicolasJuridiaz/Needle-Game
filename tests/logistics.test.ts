@@ -182,9 +182,10 @@ describe('logistics: belts', () => {
     out.open = false;
     run(sim, 20);
     const count = sim.logistics.itemCount();
-    // 10 tiles, 1 item per 0.333 tiles -> ~30 items, then the source is refused.
+    // 10 tiles, 1 item per 0.333 tiles -> 31 items on [0, 10], plus at most one that entered up to one tick of
+    // movement behind the entry; then the source is refused.
     expect(count).toBeGreaterThanOrEqual(28);
-    expect(count).toBeLessThanOrEqual(31);
+    expect(count).toBeLessThanOrEqual(32);
     const sent = src.sent;
     run(sim, 2);
     expect(src.sent).toBe(sent);

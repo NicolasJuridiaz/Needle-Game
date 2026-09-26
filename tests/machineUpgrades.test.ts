@@ -405,20 +405,19 @@ describe('machine upgrades: behaviour (real Sim)', () => {
   });
 
   /**
-   * KNOWN DEFECT (arm.ts): with nothing linked at the drop point the arm dumps its claw on the floor and only
-   * ignores targets closer than UNLINKED_MIN_RADIUS to its pedestal. The heap spreads beyond that radius, so a
-   * big-claw arm (MK2) re-grabs its own heap again and again, and every re-grab is credited again as extraction
-   * (orders "extractArm" / "extractMachine" inflate while the pile does not shrink).
+   * With nothing linked at the drop point the arm dumps its claw on the floor in front. It must never re-grab that
+   * heap: every re-grab would be credited again as extraction (orders "extractArm" / "extractMachine" would inflate
+   * while the pile does not shrink). Big claw (MK2) and a long run so the heap has time to spread.
    */
-  it.fails('KNOWN DEFECT an unlinked arm never re-grabs the hay it dumped on the floor (MK2 claw)', () => {
+  it('an unlinked arm never re-grabs the hay it dumped on the floor (MK2 claw)', () => {
     const sim = newSim(['x_arm', 'x_arm_speed', 'x_arm_grab', 'x_arm_mk2']);
     generator(sim, EDGE - 6, -2);
     const arm = place(sim, 'roboticArm', EDGE - 1, 0, 2); // drops west, the pile is east
     const cx = arm.center.x;
     let own = 0, pile = 0;
     sim.events.on('hay:extracted', (e) => { if (e.source === 'arm') { if (e.pos.x < cx) own++; else pile++; } });
-    run(sim, 65);
-    expect(pile).toBeGreaterThan(10);
+    run(sim, 300);
+    expect(pile).toBeGreaterThan(40);
     expect(own, `${own} grabs from its own heap vs ${pile} from the pile`).toBe(0);
   });
 
@@ -481,12 +480,12 @@ describe('machine upgrades: behaviour (real Sim)', () => {
   for (let l = 1; l <= BY_ID.get('l_speed')!.levels.length; l++) BELT_CONFIGS.push([['l_speed', l]], [['l_speed', l], 'l_capacity']);
 
   /**
-   * KNOWN DEFECT (logistics): a packet only enters a belt from a machine when the last item is a full spacing in,
-   * and an item leaving a belt into a machine hands off with position 0 (its overshoot is dropped), so both ends
-   * are quantized to whole ticks: rate = packet / (ceil(spacing / (speed * dt)) * dt). Belt Speed I gives 66.7
-   * instead of 75 hay/s and Belt Capacity I adds nothing at Belt Speed II (100 -> 100 instead of 133).
+   * Belt ends are not quantized to whole ticks: a machine may push a packet onto a belt as soon as the last item
+   * will be a full spacing in by the end of the tick, and a packet handed from a belt into a machine keeps its
+   * overshoot. (Before the fix Belt Speed I gave 66.7 instead of 75 hay/s and Belt Capacity I added nothing at
+   * Belt Speed II.)
    */
-  it.fails('KNOWN DEFECT belt lines into machines deliver speed / spacing x packet at every belt level (tick-quantized today)', () => {
+  it('belt lines into machines deliver speed / spacing x packet at every belt level', () => {
     for (const nodes of BELT_CONFIGS) {
       const r = beltLine(nodes);
       expect(r.rate / r.nominal, `${JSON.stringify(nodes)}: ${r.rate.toFixed(1)} hay/s delivered, nominal ${r.nominal.toFixed(1)}`).toBeCloseTo(1, 1);
@@ -716,18 +715,18 @@ describe('machine upgrades: behaviour (real Sim)', () => {
   });
 
   /**
-   * KNOWN DEFECT (processing.ts): Compressor chambers and the Wrapper clamp their cycle progress to 1 and reset it
-   * to 0, dropping the sub-tick remainder, so every cycle is rounded up to whole 50 ms ticks: the base compressor
-   * makes 57.3 instead of 60 hay/s (-4.5%) and Wrap Speed I gives +25% instead of +30%. (Scanner and rake carry
-   * the remainder and are exact.)
+   * Compressor chambers and the Wrapper carry the sub-tick remainder of each cycle (they used to reset it to 0,
+   * rounding every cycle up to whole 50 ms ticks: base compressor 57.3 instead of 60 hay/s, Wrap Speed I +25%
+   * instead of +30%). Output is counted in whole items over a 60 s window, so the bound is one item per window.
    */
-  it.fails('KNOWN DEFECT Compressor and Wrapper deliver their nominal rate at every speed level (cycles rounded to ticks today)', () => {
+  it('Compressor and Wrapper deliver their nominal rate at every speed level', () => {
     for (const [type, nodes] of [
       ...levelsOf('e_compressor', 'e_comp_speed').map((n) => ['compressor', n] as const),
       ...levelsOf('e_wrapper', 'e_wrap_speed').map((n) => ['wrapper', n] as const),
     ]) {
       const r = processRate(type, nodes);
-      expect(r.measured / r.nominal, `${type} ${JSON.stringify(nodes)}: ${r.measured.toFixed(3)}/s vs nominal ${r.nominal.toFixed(3)}/s`).toBeCloseTo(1, 2);
+      const itemsOff = Math.abs(r.measured - r.nominal) * 60;
+      expect(itemsOff, `${type} ${JSON.stringify(nodes)}: ${r.measured.toFixed(3)}/s vs nominal ${r.nominal.toFixed(3)}/s`).toBeLessThanOrEqual(1.001);
     }
   });
 

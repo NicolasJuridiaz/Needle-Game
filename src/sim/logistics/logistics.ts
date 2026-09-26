@@ -156,7 +156,9 @@ export class Logistics implements ILogistics, LogiHost {
     releaseItem(it);
     t.accept(p, link.port, this.ctx);
     from.rateOut.add(eq);
-    return 0;
+    // Hand the overshoot back as if the packet had kept moving: the next item is not held back a whole
+    // spacing, so belt -> machine throughput is exactly speed / spacing at every belt level.
+    return carry;
   }
 
   // ===================================================================================

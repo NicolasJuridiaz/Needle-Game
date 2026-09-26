@@ -414,7 +414,12 @@ export class Bot {
           const t2 = sim.player.equipped;
           let guard = 0;
           while (n.status !== 'found' && guard++ < 400) {
-            if (n.status === 'exposed') { this.advance(0.5); sim.foundNeedle(n.id, 'detector', n.pos); break; }
+            if (n.status === 'exposed') {
+              this.advance(0.5);
+              // a machine may have scooped it meanwhile: only pick up what is still lying there
+              if (n.status === 'exposed') sim.foundNeedle(n.id, 'detector', n.pos);
+              break;
+            }
             const h = sim.hay.heightAt(n.pos.x, n.pos.z);
             const res = playerDig(sim, t2, n.pos.x, h, n.pos.z);
             this.advance(sim.stat(`tool.${t2}.interval`));

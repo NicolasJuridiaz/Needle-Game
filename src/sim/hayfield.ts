@@ -308,8 +308,9 @@ export class HayField implements IHayField {
     return m;
   }
 
-  findTarget(x: number, z: number, radius: number, mode: 'nearest' | 'densest', minRadius = 0): { x: number; z: number; height: number; units: number } | null {
+  findTarget(x: number, z: number, radius: number, mode: 'nearest' | 'densest', minRadius = 0, behind?: { fx: number; fz: number; margin: number }): { x: number; z: number; height: number; units: number } | null {
     const r2 = radius * radius, m2 = minRadius * minRadius;
+    const bx = behind?.fx ?? 0, bz = behind?.fz ?? 0, bMax = behind ? -behind.margin : Infinity;
     const c0 = Math.max(0, this.colOf(x - radius)), c1 = Math.min(this.cols - 1, this.colOf(x + radius));
     const r0 = Math.max(0, this.rowOf(z - radius)), r1 = Math.min(this.rows - 1, this.rowOf(z + radius));
     let best = -1, bestScore = Infinity, fallback = -1, fallbackD = Infinity;
@@ -321,7 +322,7 @@ export class HayField implements IHayField {
         if (h <= 0.03 || this.blocked[i]) continue;
         const dx = this.cx(c) - x;
         const d2 = dx * dx + dz * dz;
-        if (d2 > r2 || d2 < m2) continue;
+        if (d2 > r2 || d2 < m2 || dx * bx + dz * bz > bMax) continue;
         if (mode === 'densest') {
           const score = -h + d2 * 1e-4; // tallest, ties -> nearer
           if (score < bestScore) { bestScore = score; best = i; }

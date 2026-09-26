@@ -81,8 +81,11 @@ export interface IHayField {
   /** Add loose hay around (x,z). Needles are placed on the new surface (status 'exposed'). */
   deposit(x: number, z: number, units: number, needles?: number[]): void;
 
-  /** Arm targeting: best cell within [minRadius, radius] of (x,z). */
-  findTarget(x: number, z: number, radius: number, mode: 'nearest' | 'densest', minRadius?: number): { x: number; z: number; height: number; units: number } | null;
+  /**
+   * Arm targeting: best cell within [minRadius, radius] of (x,z). With `behind`, only cells at least `margin`
+   * metres behind (x,z) along the direction (fx,fz) qualify.
+   */
+  findTarget(x: number, z: number, radius: number, mode: 'nearest' | 'densest', minRadius?: number, behind?: { fx: number; fz: number; margin: number }): { x: number; z: number; height: number; units: number } | null;
   /** Hay units within a radius (status / UI). */
   unitsInRadius(x: number, z: number, radius: number): number;
   /** Max surface height inside an axis-aligned world rect (placement validation). */
