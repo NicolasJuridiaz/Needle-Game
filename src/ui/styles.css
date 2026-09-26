@@ -3,6 +3,15 @@
    Units: --u scales with the viewport (≈11px at 821×462, 16px at 1920×1080).
    ===================================================================================== */
 
+/* UI font: Rubik (SIL Open Font License 1.1, see fonts/OFL.txt), self-hosted - no third-party requests. */
+@font-face {
+  font-family: 'Rubik';
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('./fonts/rubik-latin.woff2') format('woff2');
+}
+
 .pn-ui {
   --u: clamp(11px, calc(5.2px + 0.46vw + 0.46vh), 16px);
   --ink: #f6ecd8;
@@ -599,7 +608,8 @@
   left: calc(50% + var(--u) * 3.4);
   top: 50%;
   width: calc(var(--u) * 17);
-  transform: translate(-0.5em, -40%);
+  /* Mostly above the crosshair line so it never covers the [E] prompt below the crosshair. */
+  transform: translate(-0.5em, -74%);
   padding: 0.7em 0.8em 0.75em;
   border-radius: var(--r-lg);
   background: var(--grain), linear-gradient(180deg, rgba(40, 34, 27, 0.9), rgba(24, 21, 17, 0.9));
@@ -609,7 +619,7 @@
   opacity: 0;
   transition: opacity 0.14s, transform 0.18s var(--ease);
 }
-.pn-tip.is-on { opacity: 1; transform: translate(0, -40%); }
+.pn-tip.is-on { opacity: 1; transform: translate(0, -74%); }
 .pn-tip-head { display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.5em; }
 .pn-tip-ic { display: flex; font-size: calc(var(--u) * 1.5); color: var(--tip-accent); }
 .pn-tip-title { font-weight: 800; font-size: calc(var(--u) * 1.05); line-height: 1.1; }
@@ -1004,7 +1014,7 @@
 .pn-stat--power .pn-ic { color: #ffd24d; }
 .pn-card-desc { font-size: calc(var(--u) * 0.8); color: var(--ink-3); line-height: 1.35; }
 .pn-card-btn { margin: 0.2em 0.8em 0.8em; height: 2.4em; }
-.pn-card-lock { position: absolute; left: 0; right: 0; top: 0; height: calc(var(--u) * 5.2); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 0.35em; padding: 0 1em; text-align: center; background: rgba(18, 15, 12, 0.72); color: var(--ink-2); font-size: calc(var(--u) * 0.8); font-weight: 700; line-height: 1.25; }
+.pn-card-lock { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 0.35em; padding: 0 1em; text-align: center; background: rgba(18, 15, 12, 0.72); color: var(--ink-2); font-size: calc(var(--u) * 0.8); font-weight: 700; line-height: 1.25; }
 .pn-card-lock .pn-ic { font-size: 1.6em; color: var(--ink-3); }
 .pn-card.is-locked .pn-card-lock { display: flex; }
 .pn-card.is-locked .pn-card-ic { filter: grayscale(1) brightness(0.6); }
@@ -1197,7 +1207,7 @@
   .pn-pause-title { font-size: calc(var(--u) * 1.9); }
   .pn-set-row { grid-template-columns: minmax(7em, 1fr) minmax(6em, 1.3fr) 3.2em; gap: 0.6em; padding: 0.2em; }
   .pn-shop-grid { grid-template-columns: repeat(auto-fill, minmax(calc(var(--u) * 13), 1fr)); gap: 0.6em; padding: 0.7em 0.9em 0.9em; }
-  .pn-card-top, .pn-card-lock { height: calc(var(--u) * 4.2); }
+  .pn-card-top { height: calc(var(--u) * 4.2); }
   .pn-card-ic { font-size: calc(var(--u) * 2.5); }
   .pn-panel-head { padding: 0.7em 0.9em 0.55em; }
   .pn-tabs { padding: 0 0.9em; }

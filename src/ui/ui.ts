@@ -17,20 +17,8 @@ import { Toasts } from './toasts';
 import { MachineTooltip } from './tooltip';
 import { WorkTree } from './workTree';
 
-const FONT_LINK_ID = 'pn-ui-font';
-const FONT_HREF = 'https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap';
 /** Minimum spacing (ms) between hover sounds. */
 const HOVER_GAP = 70;
-
-/** Load the UI web font once (the CSS stack falls back to Trebuchet MS / system-ui when offline). */
-function ensureFont(): void {
-  if (document.getElementById(FONT_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FONT_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href = FONT_HREF;
-  document.head.appendChild(link);
-}
 
 /**
  * DOM/CSS user interface. Built once per run (the Game recreates it for a new run), updated every
@@ -45,7 +33,6 @@ export class UI {
   private destroyed = false;
 
   constructor(root: HTMLElement, private readonly ctx: UIContext) {
-    ensureFont();
     this.el = h('div', 'pn-ui', root);
     const listen: Listen = (type, fn) => { this.unsub.push(ctx.sim.events.on(type, fn as (e: GameEvents[typeof type]) => void)); };
     const env: PartEnv = { ctx, listen, sound: (id) => this.sound(id) };

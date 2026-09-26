@@ -18,3 +18,7 @@ Prioridades: **P0** impide jugar · **P1** rompe sistema importante · **P2** bu
 | B012 | P1 | Progresión | Tras `o_truck` el único Order activo era `o_stoke` (quemar 300 hay ≈ 10 min con la llama piloto) y `o_iron`/`o_handsoff` estaban encadenados detrás → ~13 min sin WP. `o_stoke`/`o_iron` ahora en paralelo tras `o_feed`, `o_stoke` = 150. | FIXED |
 | B013 | P2 | Progresión | `o_industrial` (250 P) inalcanzable con 2 generadores al máximo (234 P tras pérdidas) y `o_throttle` (150 hay/s) igual al máximo teórico de una línea. Ajustados a 200 P / 120 hay/s. | FIXED |
 | B014 | P2 | Balance | Primera partida del bot: detector a los 4 min, fábrica a los 8, luego muro de WP 10–40 min; órdenes intermedias se completaban en segundos. Retuneado (ver docs/PLAYTEST_V1.md). | FIXED |
+| B015 | P2 | UI / Shop | En tarjetas bloqueadas el velo "Unlock … in the Work Tree" tapaba el nombre del objeto. Ahora el velo vive dentro de la cabecera de la tarjeta. | FIXED |
+| B016 | P2 | UI / HUD | El tooltip de máquina tapaba el prompt `[E]` bajo la mira. Tooltip elevado (−74 %). | FIXED |
+| B017 | P2 | Plataforma / Consola | La UI pedía Rubik a fonts.googleapis.com en cada carga (petición a terceros, error de consola sin red, transferencia de IP a Google). Fuente auto-alojada (OFL, 35 KB). | FIXED |
+| B018 | P3 | UI | El banner de milestone y los toasts pueden solaparse con cabeceras de panel / el borde derecho del tooltip en ventanas ≤ 1024 px de ancho. Transitorio (3–4 s). | OPEN |

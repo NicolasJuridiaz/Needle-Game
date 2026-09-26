@@ -141,7 +141,7 @@ export class Shop extends Panel {
       if (d.levels.includes(1)) h('span', 'pn-stat', chips).innerHTML = `${icon('platform')}<span>Upper level</span>`;
     }
     h('div', 'pn-card-desc', body, desc);
-    const lock = h('div', 'pn-card-lock', el);
+    const lock = h('div', 'pn-card-lock', top); // covers exactly the icon header
     lock.innerHTML = icon('lock');
     const lockText = new TextSlot(h('span', '', lock));
     const btn = button(env, el, { cls: 'pn-btn--primary pn-card-btn', sound: item.kind === 'tool' ? null : 'uiClick' }, () => this.onBuy(item));
