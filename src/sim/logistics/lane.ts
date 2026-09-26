@@ -8,6 +8,12 @@ export const REFUSED = -1e9;
 export const ENTRY_EPS = 1e-4;
 const EXIT_EPS = 1e-9;
 
+/**
+ * Set by a refused hand-off: free space (tiles, <= 0) at the receiver's entry. The waiting head stops that far
+ * before its lane end, so spacing is also kept across tile boundaries in a jam.
+ */
+export const refusal = { room: 0 };
+
 /** Something that owns lanes and decides where an item goes when it reaches a lane's end. */
 export interface LaneOwner {
   /**
@@ -141,7 +147,7 @@ export class Lane {
     let s = carry;
     if (n > 0) {
       const m = this.items[n - 1].s - this.spacing(d);
-      if (m < -ENTRY_EPS) return REFUSED;
+      if (m < -ENTRY_EPS) { refusal.room = m; return REFUSED; }
       if (s > m) s = m;
     }
     if (s > this.len) s = this.len;
@@ -173,9 +179,12 @@ export class Lane {
       if (ns > limit) ns = limit;
       if (ns < it.s) ns = it.s;
       if (i === 0 && ns >= L - EXIT_EPS) {
+        refusal.room = 0;
         const placed = owner.exitLane(this, ns > L ? ns - L : 0);
         if (placed !== REFUSED) { limit = L + placed - sp; continue; } // head removed: items[0] is the next one
-        ns = L;
+        let cap = L + (refusal.room < 0 ? refusal.room : 0);
+        if (cap < it.s) cap = it.s;
+        if (ns > cap) ns = cap;
         this.blocked = true;
       } else if (ns > L) ns = L;
       it.s = ns;

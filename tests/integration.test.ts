@@ -44,8 +44,8 @@ function place(sim: Sim, type: BuildingType, x: number, z: number, rot: Rot = 0,
 }
 
 /** Straight belt line from (x0,z) to (x1,z) flowing along X (dir 0 if x1 > x0 else 2). */
-function beltX(sim: Sim, x0: number, x1: number, z: number, level: 0 | 1 = 0): void {
-  const rot: Rot = x1 >= x0 ? 0 : 2;
+function beltX(sim: Sim, x0: number, x1: number, z: number, level: 0 | 1 = 0, flow?: Rot): void {
+  const rot: Rot = flow ?? (x1 >= x0 ? 0 : 2);
   const step = x1 >= x0 ? 1 : -1;
   for (let x = x0; x !== x1 + step; x += step) place(sim, 'conveyor', x, z, rot, undefined, level);
 }
@@ -90,8 +90,12 @@ describe('integration: full sim', () => {
     const hopper = place(sim, 'hopper', edgeX - 2, -1, 2);
     // hopper rot 2 -> output faces west at its local (1,0) cell
     const out = hopper.ports.find((p) => p.kind === 'out')!;
-    beltX(sim, out.cell.x - 1, SELL_X, out.cell.z);
-    beltZ(sim, SELL_X, out.cell.z + 1, WORLD.fixed.sellStation.z + 1);
+    // west along the hopper row, turn south at the chute column, last tile points west into the chute
+    const sellZ = WORLD.fixed.sellStation.z + 1;
+    beltX(sim, out.cell.x - 1, SELL_X + 1, out.cell.z);
+    place(sim, 'conveyor', SELL_X, out.cell.z, 1);
+    beltZ(sim, SELL_X, out.cell.z + 1, sellZ - 1);
+    place(sim, 'conveyor', SELL_X, sellZ, 2);
     sim.rebuildTopology();
     const sold0 = sim.progress.stats.haySold;
     run(sim, 90);
@@ -172,8 +176,8 @@ describe('integration: full sim', () => {
     const cOut = comp.ports.find((p) => p.kind === 'out')!;
     const wIn = wrap.ports.find((p) => p.kind === 'in')!;
     const wOut = wrap.ports.find((p) => p.kind === 'out')!;
-    beltX(sim, cOut.cell.x - 1, wIn.cell.x + 1, cOut.cell.z);
-    beltX(sim, wOut.cell.x - 1, SELL_X, wOut.cell.z);
+    beltX(sim, cOut.cell.x - 1, wIn.cell.x + 1, cOut.cell.z, 0, 2);
+    beltX(sim, wOut.cell.x - 1, SELL_X, wOut.cell.z, 0, 2);
     const gen = place(sim, 'hayGenerator', SELL_X + 4, WORLD.fixed.sellStation.z + 4, 0);
     sim.player.carry.add('hay', 150); sim.player.pos = { x: gen.center.x + 2, y: 0, z: gen.center.z }; gen.interact(sim);
     sim.rebuildTopology();

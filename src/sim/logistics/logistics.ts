@@ -1,10 +1,40 @@
 import type { Building } from '../building';
 import { cellKey, inGridBounds, neighbor, occupiedCells } from '../grid';
 import type { BeltItemView, ILogistics, SimContext } from '../interfaces';
-import { oppositeDir, type ItemPacket } from '../types';
+import { oppositeDir, type Cell, type Dir, type ItemPacket } from '../types';
 import { LogisticsBuilding, type LogiHost } from './base';
 import { carriesHiddenNeedle, hayEq, logiClock, releaseItem, toPacket } from './items';
-import { REFUSED, type Lane } from './lane';
+import { REFUSED, refusal, type Lane } from './lane';
+
+/**
+ * Orders logistics buildings so that every building comes after the logistics buildings it feeds (post-order DFS
+ * over links; cycles are cut arbitrarily). Stepping in this order means receivers are already up to date when a
+ * packet is handed over, so the recursive fallback in `handOff` is rarely needed (keeps the stack shallow).
+ */
+function downstreamFirst(list: LogisticsBuilding[]): LogisticsBuilding[] {
+  const order: LogisticsBuilding[] = [];
+  const seen = new Set<LogisticsBuilding>();
+  const stackB: LogisticsBuilding[] = [];
+  const stackI: number[] = [];
+  for (const root of list) {
+    if (seen.has(root)) continue;
+    seen.add(root);
+    stackB.push(root); stackI.push(0);
+    while (stackB.length) {
+      const top = stackB.length - 1;
+      const b = stackB[top];
+      if (stackI[top] < b.links.length) {
+        const l = b.links[stackI[top]++];
+        const t = l?.target;
+        if (t && t instanceof LogisticsBuilding && !seen.has(t)) { seen.add(t); stackB.push(t); stackI.push(0); }
+      } else {
+        stackB.pop(); stackI.pop();
+        order.push(b);
+      }
+    }
+  }
+  return order;
+}
 
 /**
  * Logistics module (ARCHITECTURE §4.2): port linking, belt/junction/lift simulation, item views.
@@ -48,10 +78,11 @@ export class Logistics implements ILogistics, LogiHost {
     for (const b of all) {
       for (const p of b.ports) {
         if (p.kind !== 'out') continue;
-        const n = neighbor(p.cell, p.dir);
+        const dir = p.dir;
+        const n = neighbor(p.cell, dir);
         if (!inGridBounds(n.x, n.z)) continue;
         const t = at.get(cellKey(n.x, n.z, n.level));
-        if (t && t !== b && t instanceof LogisticsBuilding) t.noteFeeder(n, oppositeDir(p.dir));
+        if (t && t !== b && t instanceof LogisticsBuilding) t.noteFeeder(n, oppositeDir(dir));
       }
     }
     // Pass 2: links, one feeder per input port, in building-id order.
@@ -60,11 +91,12 @@ export class Logistics implements ILogistics, LogiHost {
       const ports = [...b.ports].sort((x, y) => x.index - y.index);
       for (const p of ports) {
         if (p.kind !== 'out') continue;
-        const n = neighbor(p.cell, p.dir);
+        const dir = p.dir;
+        const n = neighbor(p.cell, dir);
         if (!inGridBounds(n.x, n.z)) continue;
         const t = at.get(cellKey(n.x, n.z, n.level));
         if (!t || t === b) continue;
-        const outward = oppositeDir(p.dir);
+        const outward = oppositeDir(dir);
         const idx = t.inputPortAt(n, outward);
         if (idx < 0) continue;
         const key = t.id * 64 + idx;
@@ -74,8 +106,9 @@ export class Logistics implements ILogistics, LogiHost {
         if (t instanceof LogisticsBuilding) t.onFeederLinked(idx, outward);
       }
     }
-    this.list = all.filter((b): b is LogisticsBuilding => b instanceof LogisticsBuilding);
-    for (const b of this.list) b.buildGeometry();
+    const logi = all.filter((b): b is LogisticsBuilding => b instanceof LogisticsBuilding);
+    for (const b of logi) b.buildGeometry();
+    this.list = downstreamFirst(logi);
   }
 
   // ===================================================================================
@@ -107,6 +140,7 @@ export class Logistics implements ILogistics, LogiHost {
     if (t instanceof LogisticsBuilding) {
       if (!this.buildings.has(t.id)) return REFUSED;
       this.ensureStepped(t);
+      refusal.room = 0;
       const dst = t.inLane(link.port);
       if (!dst) return REFUSED;
       const s = dst.insert(it, carry, this.d, this.tickNo);
@@ -116,7 +150,7 @@ export class Logistics implements ILogistics, LogiHost {
       t.rateIn.add(eq);
       return s;
     }
-    if (!t.canAccept(it, link.port, this.ctx)) return REFUSED;
+    if (!t.canAccept(it, link.port, this.ctx)) { refusal.room = 0; return REFUSED; }
     lane.items.shift();
     const p = toPacket(it);
     releaseItem(it);

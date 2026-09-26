@@ -99,8 +99,10 @@ export class Conveyor extends ThroughBuilding {
     }
     this.curve = curve;
     this.anim.curve = curve;
-    this.lane.setLength(curve === 0 ? 1 : CURVE_LENGTH);
-    this.lane.setPath(this, curve === 0 ? STRAIGHT : curve < 0 ? ARC_LEFT : ARC_RIGHT);
+    const path = curve === 0 ? STRAIGHT : curve < 0 ? ARC_LEFT : ARC_RIGHT;
+    const len = curve === 0 ? 1 : CURVE_LENGTH;
+    this.lane.setLength(len);
+    this.lane.setPath(this, path);
     this.lane.snapPoses();
   }
 
