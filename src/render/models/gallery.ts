@@ -14,6 +14,7 @@ import { createItemGeometry, createModel, createToolViewModel } from './index';
  *   ?only=hopper,silo      show only matching labels (substring match)
  *   ?t=3.5                 freeze the clock at t seconds (deterministic screenshots)
  *   ?fp=detector           first-person viewmodel preview for one tool
+ *   ?focus=label&dist=1.2  frame one entry (optionally &az=0.8 camera azimuth, radians)
  *   window.__gallery.focus(label[, distanceScale]) frames one entry.
  */
 
@@ -29,6 +30,8 @@ interface Entry {
   tool?: ToolViewKind;
   /** Base elevation (platform sits on the elevated level). */
   y?: number;
+  /** Yaw of the model (wall props face +X; turned towards the camera). */
+  rotY?: number;
   row: number;
 }
 
@@ -97,8 +100,8 @@ const ENTRIES: Entry[] = [
   // row 4 — props
   { label: 'wheelbarrow', kind: 'wheelbarrow', anim: (t) => ({ fill: wave(t, 0.5), held: Math.floor(t / 4) % 2 }), row: 4 },
   { label: 'needle', kind: 'needle', row: 4 },
-  { label: 'orderBoard', kind: 'orderBoard', row: 4, y: 1.2 },
-  { label: 'needleCase', kind: 'needleCase', anim: (t) => ({ found: Math.floor(t / 1.5) % 7 }), row: 4, y: 1.2 },
+  { label: 'orderBoard', kind: 'orderBoard', row: 4, y: 1.2, rotY: -Math.PI / 2 },
+  { label: 'needleCase', kind: 'needleCase', anim: (t) => ({ found: Math.floor(t / 1.5) % 7 }), row: 4, y: 1.2, rotY: -Math.PI / 2 },
   { label: 'truck', kind: 'truck', row: 4 },
   // row 5 — items & tools
   { label: 'item:hay', kind: 'item', item: 'item:hay', row: 5 },
@@ -137,7 +140,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -187,7 +190,7 @@ function footprintOf(e: Entry): [number, number] {
   const def = (BUILDABLES as Record<string, { footprint: [number, number] } | undefined>)[e.kind];
   if (def) return def.footprint;
   if (e.kind === 'truck') return [7, 3];
-  if (e.kind === 'orderBoard' || e.kind === 'needleCase') return [1, 2.4];
+  if (e.kind === 'orderBoard' || e.kind === 'needleCase') return [2.4, 1];
   return [1.6, 1.2];
 }
 
@@ -230,6 +233,7 @@ function build(): void {
         live.tool = tool;
       } else {
         const m = createModel(pl.e.kind, { variant: pl.e.variant });
+        if (pl.e.rotY) m.root.rotation.y = pl.e.rotY;
         holder.add(m.root);
         m.root.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.name !== 'statusLamp') { o.castShadow = true; o.receiveShadow = true; } });
         live.model = m;
@@ -270,6 +274,7 @@ function placeLabels(): void {
   }
 }
 
+let focusAz = 0.75;
 function focus(label: string, distScale = 1): string {
   const l = lives.find((x) => x.e.label === label) ?? lives.find((x) => x.e.label.includes(label));
   if (!l) return `no entry ${label}`;
@@ -278,7 +283,7 @@ function focus(label: string, distScale = 1): string {
   const s = l.box.getSize(new THREE.Vector3());
   const r = Math.max(1.2, s.length() * 0.5);
   const dist = (r / Math.sin((camera.fov * Math.PI) / 360)) * 0.95 * distScale;
-  camera.position.set(c.x + dist * 0.62, c.y + dist * 0.42, c.z + dist * 0.66);
+  camera.position.set(c.x + dist * 0.9 * Math.sin(focusAz), c.y + dist * 0.42, c.z + dist * 0.9 * Math.cos(focusAz));
   controls.target.copy(c);
   controls.update();
   return `${l.e.label} size ${s.x.toFixed(2)}x${s.y.toFixed(2)}x${s.z.toFixed(2)}`;
@@ -313,7 +318,12 @@ function setupFirstPerson(kind: ToolViewKind): void {
 build();
 refreshBoxes();
 if (fpKind) setupFirstPerson(fpKind);
-else frameAll();
+else if (params.get('focus')) {
+  if (params.has('az')) focusAz = Number(params.get('az'));
+  step(frozenT ?? 0, 0.016);
+  refreshBoxes();
+  focus(params.get('focus')!, params.has('dist') ? Number(params.get('dist')) : 1);
+} else frameAll();
 
 let last = performance.now() / 1000;
 let clock = frozenT ?? 0;

@@ -48,8 +48,11 @@ export function beltStub(p: Parts, w: number, d: number, pd: PortDef, len: numbe
     p.box('paint', sz(len, 0.07, 0.25), BLUE, { pos: [cx + ox, y + BH - 0.07, cz + oz], bone });
   }
   if (y === 0) {
-    // leg under the stub
-    p.box('metal', sz(0.08, 0.7, BH - 0.2), C.frame, { pos: [cx, y + (BH - 0.2) / 2, cz], bone });
+    // posts under the stub rails
+    for (const s of [-1, 1]) {
+      const ox = along ? 0 : s * 0.44, oz = along ? s * 0.44 : 0;
+      p.box('metal', [0.05, BH - 0.2, 0.05], C.frame, { pos: [cx + ox, (BH - 0.2) / 2, cz + oz], bone });
+    }
   }
   const flow: V3 = pd.kind === 'in' ? [-f.nx, 0, -f.nz] : [f.nx, 0, f.nz];
   p.decal('chevron', Math.min(0.3, len * 0.9), Math.min(0.3, len * 0.9), { pos: [cx, y + BH + 0.002, cz], normal: [0, 1, 0], up: flow, bone }, pd.kind === 'in' ? 0x8ac4ff : 0x9dff8a);
@@ -63,7 +66,8 @@ function stubs(p: Parts, type: BuildingType, variant: string | undefined, len: n
 
 /** Compact hub housing: plinth, open sides at belt height, corner posts and a hood. */
 function hub(p: Parts, sx: number, sz: number, top = 0.9): void {
-  p.bev('paint', [sx, BH - 0.03, sz], 0.025, BLUE_DK, { pos: [0, (BH - 0.03) / 2, 0] });
+  p.bev('paint', [sx, BH - 0.03, sz], 0.025, BLUE, { pos: [0, (BH - 0.03) / 2, 0] });
+  p.hazard(sx - 0.1, 0.08, { pos: [0, 0.1, sz / 2 + 0.002], normal: [0, 0, 1] });
   p.box('matte', [sx - 0.04, 0.03, sz - 0.04], BELT, { pos: [0, BH - 0.015, 0] });
   const ph = top - 0.14 - BH;
   for (const ax of [-1, 1]) for (const az of [-1, 1]) {

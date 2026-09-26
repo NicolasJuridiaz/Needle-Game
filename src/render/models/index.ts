@@ -2,7 +2,16 @@ import * as THREE from 'three';
 import { BUILDABLES } from '../../config/buildables';
 import type { BuildingType, MachineStatus } from '../../sim/types';
 import type { ItemModelKind, ModelInstance, ModelKind, ModelOptions, ToolViewKind, ToolViewModel } from './api';
-import { createHopper } from './extraction';
+import { buildConveyorGeometry, type ConveyorGeometryKind } from './conveyor';
+import { createHopper, createArm, createCollector, createRake } from './extraction';
+import { createScannerMk1, createScannerMk2 } from './detection';
+import { createPlatform, createSellStation, createStairs } from './factory';
+import { buildItemGeometry } from './items';
+import { createConveyor, createLift, createMerger, createRamp, createSplitter, createUMerger, createUSplitter } from './logistics';
+import { createGenerator, createPole } from './power';
+import { createCompressor, createSilo, createWrapper } from './processing';
+import { createProp } from './props';
+import { buildToolViewModel } from './tools';
 
 /**
  * Public entry points of the procedural model library (see api.ts for the contract).
@@ -10,8 +19,33 @@ import { createHopper } from './extraction';
 
 type Factory = (opts: ModelOptions) => ModelInstance;
 
-const FACTORIES: Partial<Record<ModelKind, Factory>> = {
+const FACTORIES: Record<ModelKind, Factory> = {
+  sellStation: () => createSellStation(),
   hopper: () => createHopper(),
+  pistonRake: () => createRake(),
+  roboticArm: () => createArm(),
+  vacuumCollector: () => createCollector(),
+  conveyor: () => createConveyor(),
+  conveyorRamp: (o) => createRamp(o.variant ?? BUILDABLES.conveyorRamp.defaultVariant),
+  splitter: () => createSplitter(),
+  merger: () => createMerger(),
+  uSplitter: () => createUSplitter(),
+  uMerger: () => createUMerger(),
+  beltLift: (o) => createLift(o.variant ?? BUILDABLES.beltLift.defaultVariant),
+  scannerMk1: () => createScannerMk1(),
+  scannerMk2: () => createScannerMk2(),
+  compressor: () => createCompressor(),
+  wrapper: () => createWrapper(),
+  silo: () => createSilo(),
+  hayGenerator: () => createGenerator(),
+  powerPole: () => createPole(),
+  platform: () => createPlatform(),
+  stairs: () => createStairs(),
+  wheelbarrow: () => createProp('wheelbarrow'),
+  needle: () => createProp('needle'),
+  orderBoard: () => createProp('orderBoard'),
+  needleCase: () => createProp('needleCase'),
+  truck: () => createProp('truck'),
 };
 
 function fallbackModel(kind: ModelKind): ModelInstance {
@@ -32,21 +66,35 @@ function fallbackModel(kind: ModelKind): ModelInstance {
 
 export function createModel(kind: ModelKind, opts: ModelOptions = {}): ModelInstance {
   const f = FACTORIES[kind];
-  return f ? f(opts) : fallbackModel(kind);
+  if (!f) return fallbackModel(kind);
+  try {
+    return f(opts);
+  } catch (e) {
+    console.error(`[models] failed to build ${kind}`, e);
+    return fallbackModel(kind);
+  }
 }
 
-export function createToolViewModel(_kind: ToolViewKind): ToolViewModel {
-  const root = new THREE.Group();
-  return { root, update() { /* fallback */ }, dispose() { /* fallback */ } };
+export function createToolViewModel(kind: ToolViewKind): ToolViewModel {
+  return buildToolViewModel(kind);
 }
 
+/**
+ * Belt item geometry for instancing: base at y = 0 (sits on the belt surface), centred in X/Z, long axis
+ * along +X (travel). Returns a fresh geometry owned by the caller.
+ */
 export function createItemGeometry(kind: ItemModelKind): THREE.BufferGeometry {
-  return kind === 'item:hay' ? new THREE.IcosahedronGeometry(0.16, 0) : new THREE.BoxGeometry(0.5, 0.35, 0.35);
+  return buildItemGeometry(kind);
 }
 
-export type ConveyorGeometryKind = 'straight' | 'curveL' | 'curveR' | 'ramp' | 'rampDown' | 'legs';
+export type { ConveyorGeometryKind };
 
+/**
+ * Conveyor tile geometry (fresh, caller owns it). Tile origin = footprint centre on the level floor, travel
+ * +X, belt surface at WORLD.beltHeight; curveL = fed from local -Z, curveR = fed from local +Z; ramp /
+ * rampDown span 3 cells; legs = supports for a level-1 tile down to the floor below (belt geometry empty).
+ * Belt UV: u across (0..1), v = path length in tiles along travel (scroll the texture by time × belt.speed).
+ */
 export function createConveyorGeometry(kind: ConveyorGeometryKind): { frame: THREE.BufferGeometry; belt: THREE.BufferGeometry } {
-  const len = kind === 'ramp' || kind === 'rampDown' ? 3 : 1;
-  return { frame: new THREE.BoxGeometry(len, 0.4, 0.9).translate(0, 0.2, 0), belt: new THREE.PlaneGeometry(len, 0.8).rotateX(-Math.PI / 2).translate(0, 0.45, 0) };
+  return buildConveyorGeometry(kind);
 }

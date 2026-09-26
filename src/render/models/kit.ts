@@ -181,7 +181,7 @@ export function lampMast(p: Parts, base: V3, height: number, opts: { size?: numb
 }
 
 /** Name plate: dark backing board with the atlas label on its front face. */
-export function namePlate(p: Parts, name: RegionName, centre: V3, normal: V3, w: number, h: number, back = C.black, bone = 0): void {
+export function namePlate(p: Parts, name: RegionName, centre: V3, normal: V3, w: number, h: number, back: number = C.black, bone = 0): void {
   p.bev('paint', [w + 0.04, h + 0.04, 0.03], 0.01, back, { pos: centre, normal, bone });
   p.decal(name, w, h, { pos: [centre[0] + normal[0] * 0.017, centre[1] + normal[1] * 0.017, centre[2] + normal[2] * 0.017], normal, bone });
 }
