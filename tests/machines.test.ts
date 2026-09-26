@@ -311,7 +311,7 @@ describe('power', () => {
     expect(full / half).toBeCloseTo(2, 1);
   });
 
-  it('idle generator (no demand) does not burn; empty firebox -> noFuel; feeding emits generator:fed', () => {
+  it('idle generator (no demand) only burns its pilot flame; empty firebox -> noFuel; feeding emits generator:fed', () => {
     const sim = newSim(21, ['f_generator']);
     const gen = place(sim, 'hayGenerator', -24, -14, 0);
     run(sim, 0.2);
@@ -322,7 +322,9 @@ describe('power', () => {
     expect(fed).toEqual([50]);
     run(sim, 5);
     expect(gen.status).toBe('idle');
-    expect(gen.contents().hay).toBeCloseTo(50);
+    // pilot flame: burnRate (2 hay/s) x generatorPilotBurn (0.25) x 5 s = 2.5 hay
+    expect(gen.contents().hay).toBeCloseTo(50 - 2 * 0.25 * 5, 1);
+    expect(sim.progress.stats.hayBurned).toBeCloseTo(2.5, 1);
     expect(sim.power.totalSupply).toBeCloseTo(60 * 0.9);
   });
 

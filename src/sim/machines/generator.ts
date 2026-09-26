@@ -1,3 +1,4 @@
+import { BALANCE } from '../../config/balance';
 import type { BuildingInit, InfoLine, InteractionOption } from '../building';
 import type { SimContext } from '../interfaces';
 import { Inventory } from '../inventory';
@@ -65,9 +66,9 @@ export class HayGenerator extends Machine {
     const cap = this.capacity(ctx);
     if (this.powerGate(ctx)) {
       const load = Math.max(0, Math.min(1, this.load));
-      if (this.firebox.hay > EPS && load > 0) {
+      if (this.firebox.hay > EPS) {
         this.slipped.length = 0;
-        const burned = this.firebox.consume(Math.max(0, ctx.stat('generator.burnRate')) * load * dt, this.slipped);
+        const burned = this.firebox.consume(this.burnRate(ctx) * dt, this.slipped);
         if (this.slipped.length) slipNeedles(ctx, this.slipped, this, this.centre);
         if (burned > 0) ctx.progress.stats.hayBurned += burned;
       }
@@ -84,6 +85,12 @@ export class HayGenerator extends Machine {
     a.fuel = cap > 0 ? Math.min(1, this.firebox.hay / cap) : 0;
     a.load = lit ? Math.min(1, this.load) : 0;
     a.industrial = ctx.stat('generator.industrial') >= 1 ? 1 : 0;
+  }
+
+  /** Hay/s burnt right now: proportional to load, never below the pilot flame while fuelled. */
+  private burnRate(ctx: SimContext): number {
+    const load = Math.max(0, Math.min(1, this.load));
+    return Math.max(0, ctx.stat('generator.burnRate')) * Math.max(load, BALANCE.generatorPilotBurn);
   }
 
   // ----- manual feeding ----------------------------------------------------------------------
@@ -139,7 +146,7 @@ export class HayGenerator extends Machine {
     lines.push({ label: 'Output', value: `${fmtNum(out * load)} / ${fmtNum(lit ? out : 0)} P`, tone: lit ? 'good' : 'bad' });
     lines.push({ label: 'Load', value: `${Math.round(load * 100)}%`, tone: load >= 0.999 ? 'warn' : undefined });
     lines.push({ label: 'Firebox', value: `${fmtInt(this.firebox.hay)} / ${fmtInt(cap)}`, tone: this.firebox.hay <= EPS ? 'bad' : this.firebox.hay < cap * 0.2 ? 'warn' : undefined });
-    const burn = ctx.stat('generator.burnRate') * load;
+    const burn = lit ? this.burnRate(ctx) : 0;
     lines.push({ label: 'Burning', value: fmtRate(burn) });
     if (burn > EPS && this.firebox.hay > EPS) lines.push({ label: 'Fuel left', value: fmtDuration(this.firebox.hay / burn) });
     const net = this.network >= 0 ? ctx.power.networks[this.network] : undefined;

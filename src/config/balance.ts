@@ -26,6 +26,8 @@ export const BALANCE = {
 
   /** Power: idle machines draw this fraction of their nominal power. */
   idlePowerFraction: 0.15,
+  /** A fuelled generator's fire never goes fully out: it burns at least this fraction of its full-load rate. */
+  generatorPilotBurn: 0.25,
   /** Radius (m) around a generator that powers machines directly without poles. */
   generatorDirectRadius: 5,
 
