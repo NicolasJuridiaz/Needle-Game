@@ -180,3 +180,31 @@ export function disposeObject(root: THREE.Object3D, keep?: ReadonlySet<THREE.Mat
     for (const x of Array.isArray(mat) ? mat : [mat]) if (!keep?.has(x)) x.dispose();
   });
 }
+
+/**
+ * Small low-poly steel sewing needle lying along +X, centred on the origin: tapered point at +X,
+ * flattened eye (ring) at -X. Default length 0.3 m. Vertex-coloured steel (merged, one draw call).
+ */
+export function createNeedleGeometry(length = 0.3): THREE.BufferGeometry {
+  const L = length;
+  const r = L * 0.018;
+  const eyeLen = L * 0.12;
+  const tipLen = L * 0.2;
+  const shaftLen = L - eyeLen - tipLen;
+  const x0 = -L / 2;
+  const b = new GeometryBuilder();
+  const steel = 0xdfe6ea;
+  const Z90: Euler3 = [0, 0, -Math.PI / 2];
+  // Shaft (cylinder axis Y -> X).
+  b.cylinder(r, r, shaftLen, 6, x0 + eyeLen + shaftLen / 2, 0, 0, steel, Z90);
+  // Tip: cone pointing +X.
+  b.cone(r, tipLen, 6, L / 2 - tipLen / 2, 0, 0, steel, Z90);
+  // Eye: flattened ring in the XY plane + two thin cheeks joining it to the shaft.
+  const eyeR = eyeLen * 0.5;
+  _e.set(0, 0, 0); _q.setFromEuler(_e);
+  _s.set(1, 0.55, 1); _p.set(x0 + eyeR, 0, 0);
+  _m.compose(_p, _q, _s);
+  b.add(new THREE.TorusGeometry(eyeR, r * 0.75, 4, 8), steel, _m);
+  b.cone(r * 1.05, eyeLen * 0.6, 6, x0 + eyeLen + eyeLen * 0.2, 0, 0, steel, [0, 0, Math.PI / 2]);
+  return b.build();
+}
