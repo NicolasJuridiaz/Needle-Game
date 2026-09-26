@@ -293,7 +293,7 @@ export const TECH_NODES: TechNode[] = [
   // =====================================================================================
   { id: 'f_generator', name: 'Hay Generator Plans', branch: 'power', kind: 'plan', requires: [], icon: 'generator', pos: [1, 0],
     unlocks: { building: ['hayGenerator'] },
-    levels: [lvl(2, 'Unlocks the Hay Generator: burn hay, make power.')] },
+    levels: [lvl(1, 'Unlocks the Hay Generator: burn hay, make power.')] },
   { id: 'f_pole', name: 'Power Pole Plans', branch: 'power', kind: 'plan', requires: ['f_generator'], icon: 'pole', pos: [0, 1],
     unlocks: { building: ['powerPole'] },
     levels: [lvl(2, 'Unlocks Power Poles to carry power across the warehouse.')] },

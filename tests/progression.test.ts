@@ -558,7 +558,7 @@ describe('orders', () => {
     p.tick(TICK, ctx);
     addBuildings(world, [0, 1, 2].map(() => fakeBuilding('roboticArm', { network: 0, status: 'running' })));
     p.tick(TICK, ctx);
-    finish(p, 'o_robots');
+    finish(p, 'o_wholesale');
     p.tick(TICK, ctx);
     expect(activeIds(p)).toContain('o_steady');
     const ticks = Math.round(BALANCE.stableWindow / TICK);

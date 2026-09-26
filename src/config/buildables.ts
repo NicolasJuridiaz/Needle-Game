@@ -98,7 +98,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   roboticArm: {
     id: 'roboticArm', name: 'Robotic Arm', category: 'extraction',
     desc: 'Grabs hay within reach and drops it in front (belt, hopper or floor).',
-    requiresNode: 'x_arm', cost: 9000, costGrowth: 1.2, footprint: [1, 1], height: 3.0, power: 15,
+    requiresNode: 'x_arm', cost: 9000, costGrowth: 1.16, footprint: [1, 1], height: 3.0, power: 15,
     ports: [{ kind: 'out', cell: [0, 0], dir: 0, items: HAY, label: 'Drop point' }],
     levels: [0, 1], needsPlatformOnLevel1: true, removable: true, movable: true,
     throughputLabel: '10 hay/s', icon: 'arm', order: 12,

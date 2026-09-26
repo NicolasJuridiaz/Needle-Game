@@ -412,8 +412,15 @@ export class Bot {
           const tool = this.bestDigTool();
           sim.player.equipped = tool === 'vacuum' ? (sim.progress.ownedTools.has('pitchfork') ? 'pitchfork' : 'shovel') : tool;
           const t2 = sim.player.equipped;
-          let guard = 0;
+          let guard = 0, lastLook = sim.time;
           while (n.status !== 'found' && guard++ < 400) {
+            // A deep needle takes minutes to dig out: between trips a player still spends money / WP.
+            if (sim.time - lastLook > 60) {
+              lastLook = sim.time;
+              this.midDigDecisions();
+              sim.player.equipped = t2;
+              sim.player.pos.x = n.pos.x - 1; sim.player.pos.z = n.pos.z;
+            }
             if (n.status === 'exposed') {
               this.advance(0.5);
               // a machine may have scooped it meanwhile: only pick up what is still lying there
@@ -423,7 +430,13 @@ export class Bot {
             const h = sim.hay.heightAt(n.pos.x, n.pos.z);
             const res = playerDig(sim, t2, n.pos.x, h, n.pos.z);
             this.advance(sim.stat(`tool.${t2}.interval`));
-            if (res.full) { this.sellTrip(); sim.player.pos.x = n.pos.x - 1; sim.player.pos.z = n.pos.z; }
+            if (res.full) {
+              this.sellTrip();
+              lastLook = sim.time;
+              this.midDigDecisions();
+              sim.player.equipped = t2;
+              sim.player.pos.x = n.pos.x - 1; sim.player.pos.z = n.pos.z;
+            }
           }
           return;
         }
@@ -874,6 +887,14 @@ export class Bot {
   // =====================================================================================
   // Main loop
   // =====================================================================================
+
+  /** Purchases a player makes on the way while busy with something long (digging out a detected needle). */
+  private midDigDecisions(): void {
+    const sim = this.sim;
+    this.spendWP();
+    this.buyTools();
+    if (sim.time - this.lastFactoryCheck > 5) { this.lastFactoryCheck = sim.time; this.buildFactory(); }
+  }
 
   run(): { completed: boolean; minutes: number } {
     const sim = this.sim;
