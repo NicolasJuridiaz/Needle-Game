@@ -68,6 +68,7 @@ abstract class Scanner extends Machine {
 
   override canAccept(item: ItemPacket, port: number, ctx: SimContext): boolean {
     if (item.type !== 'hay' || item.amount <= 0 || !this.inPortAccepts(port, 'hay')) return false;
+    this.prepare();
     const li = port >> 1;
     const lane = this.lanes[li];
     if (!lane || !this.laneActive(li)) return false;

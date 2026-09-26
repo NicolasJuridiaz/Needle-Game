@@ -19,6 +19,12 @@ const REACH_TIME = 0.35;
 const LIFT_TIME = 0.3;
 /** Radius (m) of the grab around the target cell. */
 const GRAB_RADIUS = 0.45;
+/**
+ * When the claw comes back less than this full (thin hay at the edge of the pile), it scoops the
+ * remainder from a wider disc (GRAB_WIDE_RADIUS) around the same spot, so a grab is ~`arm.grab`.
+ */
+const GRAB_FILL = 0.75;
+const GRAB_WIDE_RADIUS = 0.9;
 /** Closest target (m) from the pedestal axis. */
 const MIN_TARGET_RADIUS = 0.8;
 /**
@@ -202,7 +208,13 @@ export class RoboticArm extends Machine {
     const cap = Math.max(0, ctx.stat('arm.grab') * ctx.stat('arm.throughputMul'));
     this.loadCap = Math.max(1, cap);
     if (cap <= EPS) return;
-    const ex = ctx.hay.extractRadius(this.tx, this.tz, GRAB_RADIUS, cap);
+    this.scoop(ctx, GRAB_RADIUS, cap);
+    if (this.load.hay < cap * GRAB_FILL) this.scoop(ctx, GRAB_WIDE_RADIUS, cap - this.load.hay);
+  }
+
+  private scoop(ctx: SimContext, radius: number, max: number): void {
+    if (max <= EPS) return;
+    const ex = ctx.hay.extractRadius(this.tx, this.tz, radius, max);
     if (ex.needles.length) { this.load.add('hay', 0, ex.needles); needlesPickedUp(ctx, ex.needles, this); }
     if (ex.units > EPS) {
       this.load.add('hay', ex.units);
