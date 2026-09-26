@@ -33,6 +33,7 @@ import { TOOL_ORDER } from '../sim/types';
 import { UI } from '../ui/ui';
 import type { AimState, BuildHudState, GameMode, UIActions, UIContext } from '../ui/context';
 import { BuildMode } from './buildMode';
+import { AutoQuality } from './autoQuality';
 import { advanceFixed, type FixedStepState } from './fixedStep';
 import { Hints, type Hint } from './hints';
 import { Input } from './input';
@@ -100,6 +101,7 @@ export class Game implements UIContext {
   private frameCount = 0;
   private fpsTime = 0;
   private fps = 60;
+  private readonly autoQuality = new AutoQuality();
   private sessionTime = 0;
   private autosaveTimer = 0;
   private contextTimer = 0;
@@ -365,13 +367,15 @@ export class Game implements UIContext {
   }
 
   private frame(now: number): void {
-    const dt = Math.min(0.1, Math.max(0, (now - this.lastFrame) / 1000));
+    const rawDt = Math.max(0, (now - this.lastFrame) / 1000);
+    const dt = Math.min(0.1, rawDt);
     this.lastFrame = now;
     const time = now / 1000;
     this.sessionTime += dt;
     this.frameCount++;
     this.fpsTime += dt;
     if (this.fpsTime >= 0.5) { this.fps = this.frameCount / this.fpsTime; this.frameCount = 0; this.fpsTime = 0; }
+    this.checkFrameRate(rawDt);
 
     this.handleGlobalKeys();
 
@@ -712,6 +716,18 @@ export class Game implements UIContext {
       },
       playUiSound: (id) => this.audio.play(id),
     };
+  }
+
+  /** GPU failsafe (see AutoQuality): lowers the preset one step when gameplay stays below ~24 FPS. */
+  private checkFrameRate(frameSeconds: number): void {
+    const active = GAMEPLAY_MODES.has(this.mode) && !document.hidden;
+    const next = this.autoQuality.frame(frameSeconds, active, this.settings.quality, this.settings.qualityManual);
+    if (!next) return;
+    this.applySettings({ quality: next });
+    this.autoQuality.restart();
+    this.sim.events.emit('toast', {
+      text: `Graphics set to ${next === 'low' ? 'Low' : 'Medium'} to keep the game smooth. Change it in Settings (Esc).`, kind: 'info',
+    });
   }
 
   private applySettings(patch: Partial<Settings>): void {

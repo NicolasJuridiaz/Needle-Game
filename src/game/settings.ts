@@ -9,6 +9,8 @@ export interface Settings {
   fov: number;          // 60..100
   /** Render preset (src/render/quality.ts). New players start on 'medium'; a stored choice is kept. */
   quality: 'low' | 'medium' | 'high';
+  /** The player picked the quality in Settings: the low-FPS failsafe never changes it then. */
+  qualityManual: boolean;
   showFps: boolean;
   /** Toggle vs hold for continuous digging. */
   holdToDig: boolean;
@@ -23,6 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   invertY: false,
   fov: 75,
   quality: 'medium',
+  qualityManual: false,
   showFps: false,
   holdToDig: true,
 };
@@ -36,5 +39,6 @@ export function sanitizeSettings(s: Partial<Settings> | null | undefined): Setti
   out.sensitivity = clamp(out.sensitivity, 0.2, 3);
   out.fov = clamp(out.fov, 60, 100);
   if (!['low', 'medium', 'high'].includes(out.quality)) out.quality = DEFAULT_SETTINGS.quality;
+  out.qualityManual = out.qualityManual === true;
   return out;
 }

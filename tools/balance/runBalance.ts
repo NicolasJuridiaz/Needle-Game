@@ -1,6 +1,7 @@
 /**
  * Runs the balance bot headless and prints a pacing report.
- *   npm run balance -- --seeds 3 --minutes 90 [--verbose] [--snapshots]
+ *   npm run balance -- --seeds 3 --minutes 90 [--seed 1000] [--verbose] [--snapshots] [--decisions]
+ * --decisions prints every decision with the economy state at that moment.
  */
 import { Bot, fmt } from './bot';
 
@@ -14,6 +15,7 @@ const minutes = arg('minutes', 90);
 const firstSeed = arg('seed', 1000);
 const verbose = args.includes('--verbose');
 const showSnapshots = args.includes('--snapshots');
+const showDecisions = args.includes('--decisions');
 
 /** GDD §3.3 pacing targets (minutes) for the first occurrence of each event. */
 const TARGETS: [string, string, number, number][] = [
@@ -75,6 +77,12 @@ for (let s = 0; s < seeds; s++) {
     console.log('  time   money     WP  pile%  ndl  extract  delivered  power(d/s)  machines  bottleneck');
     for (const p of bot.snapshots) {
       console.log(`  ${fmt(p.t)}  ${String(p.money).padStart(8)} ${String(p.wp).padStart(4)}  ${String(p.pile).padStart(5)}  ${p.needles}    ${String(p.extract).padStart(5)}  ${String(p.delivered).padStart(8)}  ${p.power.padStart(10)}  ${String(p.machines).padStart(7)}   ${p.bottleneck}`);
+    }
+  }
+  if (showDecisions) {
+    console.log('  TIME   EVENT                                    MONEY      WP  HAY RATE(/s)  POWER(d/s)  NEXT PURCHASE ($)          NEXT TECH (WP)        ACTIVE ORDERS                         NEEDLES');
+    for (const d of bot.decisions) {
+      console.log(`  ${fmt(d.t)}  ${d.event.slice(0, 40).padEnd(40)} ${String(Math.round(d.money)).padStart(8)}  ${String(d.wp).padStart(4)}  ${String(d.delivered).padStart(12)}  ${d.power.padStart(10)}  ${(d.waitingMoney || '-').padEnd(26)} ${(d.savingWP || '-').padEnd(21)} ${(d.orders || '-').padEnd(37)} ${d.needles}`);
     }
   }
   summary.push(`seed ${seed}: ${res.completed ? 'completed' : 'NOT completed'} ${res.minutes.toFixed(1)} min, needles ${sim.progress.needlesFound.length}/6, longest idle ${fmt(bot.longestNoDecision)}`);

@@ -61,7 +61,7 @@ export class SettingsPanel {
       const b = h('button', 'pn-seg-btn', seg, QUALITY_LABEL[q]);
       b.type = 'button';
       wireSounds(env, b);
-      b.addEventListener('click', () => { env.ctx.actions.setSettings({ quality: q }); this.sync(); });
+      b.addEventListener('click', () => { env.ctx.actions.setSettings({ quality: q, qualityManual: true }); this.sync(); });
       this.quality.push(b);
     }
     this.toggle(display, { key: 'showFps', label: 'Show FPS counter' });

@@ -37,8 +37,21 @@ async function boot(): Promise<void> {
   }
 }
 
+/** True when the browser can create a WebGL context (hardware acceleration may be off or blocklisted). */
+function hasWebGL(): boolean {
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') ?? c.getContext('webgl'));
+  } catch {
+    return false;
+  }
+}
+
 boot().catch((err) => {
   console.error('[boot] failed', err);
   const boot = document.getElementById('boot');
-  if (boot) boot.innerHTML = '<div style="color:#f2c14e;font:600 16px system-ui;text-align:center;padding:24px">Something went wrong while loading.<br/>Please reload the page.</div>';
+  const text = hasWebGL()
+    ? 'Something went wrong while loading.<br/>Please reload the page.'
+    : 'Your browser could not start 3D graphics (WebGL).<br/>Turn on hardware acceleration in the browser settings, update your graphics driver, or try Chrome / Edge.';
+  if (boot) boot.innerHTML = `<div style="color:#f2c14e;font:600 16px system-ui;text-align:center;padding:24px">${text}</div>`;
 });
