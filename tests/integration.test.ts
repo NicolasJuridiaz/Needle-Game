@@ -106,7 +106,7 @@ describe('integration: full sim', () => {
     unlock(sim, ['d_scanner', 'l_conveyor', 'f_generator', 'x_hopper']);
     const gen = place(sim, 'hayGenerator', -24, -14, 0);
     sim.player.carry.add('hay', 150); sim.player.pos = { x: -26, y: 0, z: -12 }; gen.interact(sim);
-    const scanner = place(sim, 'scannerMk1', -22, -12, 0);
+    const scanner = place(sim, 'scannerMk1', -20, -12, 0);
     const inPort = scanner.ports.find((p) => p.kind === 'in')!;
     const outPort = scanner.ports.find((p) => p.kind === 'out')!;
     beltX(sim, outPort.cell.x + 1, outPort.cell.x + 4, outPort.cell.z);
@@ -168,7 +168,12 @@ describe('integration: full sim', () => {
     unlock(sim, ['e_compressor', 'e_wrapper', 'l_conveyor', 'f_generator', 'f_pole']);
     const comp = place(sim, 'compressor', SELL_X + 6, WORLD.fixed.sellStation.z, 2);
     const wrap = place(sim, 'wrapper', SELL_X + 2, WORLD.fixed.sellStation.z, 2);
-    void wrap;
+    // compressor out -> belt -> wrapper in; wrapper out -> belt -> chute
+    const cOut = comp.ports.find((p) => p.kind === 'out')!;
+    const wIn = wrap.ports.find((p) => p.kind === 'in')!;
+    const wOut = wrap.ports.find((p) => p.kind === 'out')!;
+    beltX(sim, cOut.cell.x - 1, wIn.cell.x + 1, cOut.cell.z);
+    beltX(sim, wOut.cell.x - 1, SELL_X, wOut.cell.z);
     const gen = place(sim, 'hayGenerator', SELL_X + 4, WORLD.fixed.sellStation.z + 4, 0);
     sim.player.carry.add('hay', 150); sim.player.pos = { x: gen.center.x + 2, y: 0, z: gen.center.z }; gen.interact(sim);
     sim.rebuildTopology();
@@ -183,9 +188,10 @@ describe('integration: full sim', () => {
   it('Energy: overload slows machines progressively (no hard shutdown)', () => {
     const sim = new Sim(15);
     rich(sim);
-    unlock(sim, ['x_arm', 'f_generator']);
+    unlock(sim, ['x_arm', 'f_generator', 'f_pole']);
     const gen = place(sim, 'hayGenerator', -14, -8, 0);
     sim.player.carry.add('hay', 150); sim.player.pos = { x: -16, y: 0, z: -6 }; gen.interact(sim);
+    place(sim, 'powerPole', -12, -2, 0);
     const edgeX = Math.floor(WORLD.pile.cx - WORLD.pile.rx) - 2;
     const arms = [place(sim, 'roboticArm', edgeX, -6, 2), place(sim, 'roboticArm', edgeX, -4, 2), place(sim, 'roboticArm', edgeX, -2, 2),
       place(sim, 'roboticArm', edgeX, 0, 2), place(sim, 'roboticArm', edgeX, 2, 2)];
@@ -201,9 +207,10 @@ describe('integration: full sim', () => {
   it('Save: complex factory -> save -> reload -> identical state', () => {
     const sim = new Sim(16);
     rich(sim);
-    unlock(sim, ['x_arm', 'x_hopper', 'l_conveyor', 'f_generator', 'e_silo', 'l_splitter']);
+    unlock(sim, ['x_arm', 'x_hopper', 'l_conveyor', 'f_generator', 'f_pole', 'e_silo', 'l_splitter']);
     const gen = place(sim, 'hayGenerator', -14, -8, 0);
     sim.player.carry.add('hay', 150); sim.player.pos = { x: -16, y: 0, z: -6 }; gen.interact(sim);
+    place(sim, 'powerPole', -13, -3, 0);
     const edgeX = Math.floor(WORLD.pile.cx - WORLD.pile.rx) - 2;
     place(sim, 'roboticArm', edgeX, 0, 2);
     const hopper = place(sim, 'hopper', edgeX - 2, -1, 2);
