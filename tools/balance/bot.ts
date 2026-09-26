@@ -1,21 +1,27 @@
 /**
  * BALANCE BOT — plays a full run headless with the REAL simulation and the same player actions the game uses.
  * No cheats: it earns money/WP legitimately, walks (time passes while walking), digs with cooldowns, sells at the
- * Market Chute, unlocks tech, buys tools and builds a factory from a scripted "trench" layout.
+ * Market Chute, unlocks tech, buys tools and builds a factory with real placements, belts and power.
+ *
+ * Factory layout ("trunk"): one main belt along row z = 0 from the pile's west foot to the Market Chute.
+ * Going downstream (west): rake at the trunk head -> arms / side rakes / collectors side-loading along it ->
+ * hand-dump hopper -> scanner -> fuel splitter (2 generators) -> processing splitter (bypass to the chute's
+ * north input) -> silo -> compressor -> wrapper -> chute. The trunk grows east into the pile as it is cleared
+ * and starved extractors are moved forward, like a player would.
  *
  * It is a reasonable (not optimal) player. Its timeline is used to tune pacing towards 50-70 minutes.
  */
 import { BALANCE } from '../../src/config/balance';
-import { BUILDABLES } from '../../src/config/buildables';
 import { TECH_BY_ID } from '../../src/config/techTree';
 import { WORLD } from '../../src/config/world';
 import type { Building } from '../../src/sim/building';
-import { buildingCenter } from '../../src/sim/grid';
+import { buildingCenter, localToOffset, rotatedSize } from '../../src/sim/grid';
+import { BUILDABLES } from '../../src/config/buildables';
 import {
   carryCapacity, detectorReading, playerDig, playerVacuum, spawnWheelbarrow, toggleWheelbarrow,
 } from '../../src/sim/playerActions';
 import { Sim } from '../../src/sim/sim';
-import type { BuildingType, Cell, Rot, ToolId } from '../../src/sim/types';
+import { DIR_DX, DIR_DZ, oppositeDir, type BuildingType, type Cell, type Dir, type Rot, type ToolId } from '../../src/sim/types';
 
 export interface TimelineEntry { t: number; kind: string; detail: string }
 
@@ -27,34 +33,92 @@ export interface BotOptions {
   verbose: boolean;
 }
 
+export interface Snapshot {
+  t: number; money: number; wp: number; pile: number; needles: number;
+  extract: number; delivered: number; power: string; machines: number; bottleneck: string;
+}
+
 const DT = BALANCE.tickDt;
 
-/** Tech unlock priority (the bot unlocks the first affordable one whose prerequisites are met). */
+/**
+ * Work Tree priority, roughly the GDD's intended order. The bot SAVES for the first node it can reach
+ * (prerequisites met) instead of spending WP on anything cheaper further down.
+ */
 const TECH_PRIORITY: string[] = [
-  'p_grab', 'p_carry', 'p_shovel', 'p_bucket', 'p_wide_shovel', 'p_quick_scoop', 'p_detector', 'p_pitchfork', 'p_wheelbarrow',
-  'p_move', 'p_det_range', 'p_wider_tines', 'p_fork_speed', 'p_barrow_cap', 'p_faster_push',
-  'f_generator', 'x_rake', 'x_hopper', 'l_conveyor', 'f_pole', 'x_rake_speed', 'x_rake_auto', 'f_autofeed', 'l_splitter',
-  'p_vacuum', 'p_det_depth', 'p_carry', 'x_rake_width', 'f_firebox', 'l_merger', 'x_arm', 'f_gen_output', 'd_scanner',
-  'x_arm_speed', 'x_arm_grab', 'l_speed', 'e_compressor', 'x_arm_reach', 'e_silo', 'd_speed', 'd_batch', 'x_rake_push',
-  'x_arm_rotation', 'd_buffer', 'd_eject', 'e_comp_speed', 'e_bale_value', 'e_hay_value', 'x_arm_smart', 'l_priority',
-  'e_wrapper', 'f_fuel_eff', 'e_batch_eff', 'e_wrap_speed', 'l_lift', 'x_collector', 'x_arm_mk2', 'l_capacity',
-  'd_mk2', 'x_col_suction', 'x_col_radius', 'e_double_chamber', 'f_industrial_gen', 'x_col_output', 'd_mk2_speed', 'd_dual_lane',
-  'x_rake_industrial', 'e_premium_wrap', 'e_wrapped_value', 'x_col_turbine', 'e_order_reward', 'f_pole_range', 'l_overflow',
+  'p_grab', 'p_carry', 'p_shovel', 'p_bucket', 'p_detector', 'p_pitchfork', 'p_wide_shovel', 'p_quick_scoop', 'p_wheelbarrow',
+  'x_hopper', 'f_generator', 'x_rake', 'l_conveyor', 'f_pole', 'x_rake_auto', 'l_splitter', 'p_det_range', 'x_rake_speed',
+  'x_arm', 'f_autofeed', 'f_gen_output', 'd_scanner', 'x_arm_grab', 'x_arm_speed', 'l_speed', 'e_silo', 'e_compressor',
+  'x_arm_reach', 'd_speed', 'f_firebox', 'd_batch', 'e_comp_speed', 'e_wrapper', 'p_det_depth', 'f_pole_conn',
+  'x_rake_push', 'x_hopper_out', 'p_vacuum', 'x_collector', 'e_bale_value', 'f_fuel_eff', 'x_arm_mk2', 'l_capacity',
+  'd_mk2', 'f_industrial_gen', 'e_double_chamber', 'e_wrap_speed', 'e_wrapped_value', 'e_premium_wrap', 'x_col_suction',
+  'x_col_radius', 'd_mk2_speed', 'e_order_reward', 'e_hay_value', 'e_silo_out', 'f_pole_range', 'x_rake_width',
+  'x_rake_industrial', 'x_arm_rotation', 'x_arm_smart', 'p_det_precision', 'p_det_direction', 'd_buffer', 'd_eject',
+  'x_col_output', 'x_col_efficiency', 'x_col_turbine', 'p_move', 'p_barrow_cap', 'p_faster_push', 'p_fork_speed',
+  'p_wider_tines', 'p_vac_suction', 'p_vac_range', 'e_batch_eff', 'e_silo_cap', 'e_silo_in', 'l_merger', 'l_priority',
+  'l_overflow', 'f_power_loss', 'd_dual_lane', 'x_hopper_cap', 'x_hopper_dual', 'e_silo_dual',
 ];
 
 const TOOL_PRIORITY: (ToolId | 'wheelbarrow')[] = ['shovel', 'bucket', 'detector', 'pitchfork', 'wheelbarrow', 'vacuum'];
 
+// ----- Layout (row z = TZ, items flow west) --------------------------------------------------------
+const TZ = 0;
+const CORNER_X = -29;           // trunk turns south here, enters the chute's east input at (-30, 5)
+const WRAP_X = -28;             // wrapper cells x -28..-26
+const COMP_X = -24;             // compressor cells x -24..-22
+const SILO_X = -20;             // silo cells x -20..-18 (z -1..1)
+const PROC_SPLIT_X = -17;       // processing splitter; north output = bypass
+const FUEL_SPLIT_X = -15;       // fuel splitter: generators south/north
+const GEN_SLOTS: { cell: Cell; rot: Rot }[] = [
+  { cell: { x: -16, z: 1, level: 0 }, rot: 1 },   // input at (-15, 1) facing north
+  { cell: { x: -16, z: -3, level: 0 }, rot: 3 },  // input at (-15, -1) facing south
+];
+const SCAN_X = -13;             // scanner MK1 cells x -13..-11 (MK2: -13..-10)
+const HOPPER_CELL: Cell = { x: -10, z: 1, level: 0 }; // rot 3: output at (-10, 1) facing north onto the trunk
+/** North feeder hopper (rot 1): output at (-9, -1) facing south onto the trunk; input at (-10, -2) from (-10, -3). */
+const HOPPER_N_CELL: Cell = { x: -10, z: -2, level: 0 };
+/** Feeder arcs around the pile foot: row z = +-ARC_Z flowing west, then along x = -10 into the hoppers. */
+const ARC_Z = 12;
+const ARC_X_EAST = 17;
+const HEAD_X0 = -9;             // initial trunk head
+const RAKE_X0 = -8;             // head rake (rot 0) cells x -8..-7, z -1..1
+
+type Stage = 'manual' | 'rake' | 'trunk';
+
+/** Cells reserved by the layout (poles must never land there). [x0, z0, x1, z1] inclusive. */
+const RESERVED: [number, number, number, number][] = [
+  [-31, -5, 20, -4],              // bypass row z = -4 (and a margin)
+  [-31, -5, -29, 9],              // chute columns
+  [-30, -1, -9, 1],               // trunk + inline machines (z -1..1)
+  [-17, -4, -14, 4],              // generators + splitters
+  [HOPPER_N_CELL.x, HOPPER_N_CELL.z, HOPPER_N_CELL.x + 1, HOPPER_N_CELL.z + 1],
+  [HOPPER_CELL.x, HOPPER_CELL.z, HOPPER_CELL.x + 1, HOPPER_CELL.z + 1],
+  [-11, -ARC_Z, -10, ARC_Z],      // arc columns
+  [-11, ARC_Z, ARC_X_EAST, ARC_Z], [-11, -ARC_Z, ARC_X_EAST, -ARC_Z], // arc rows
+];
+/** Seconds a human spends per placement (shop, aim, rotate, confirm) and per moved machine. */
+const BUILD_TIME_MACHINE = 5;
+const BUILD_TIME_BELT = 0.8;
+const MOVE_TIME = 6;
+
+const isReserved = (x: number, z: number): boolean => RESERVED.some(([x0, z0, x1, z1]) => x >= x0 && x <= x1 && z >= z0 && z <= z1);
+
 export class Bot {
   readonly sim: Sim;
   readonly log: TimelineEntry[] = [];
-  private lastIdleCheck = 0;
-  private idleSince = -1;
+  readonly snapshots: Snapshot[] = [];
   /** Longest stretch (s) with no new purchase/unlock/order/needle. */
   longestNoDecision = 0;
+  longestNoDecisionAt = 0;
   private lastDecisionAt = 0;
   private detectorSweepAt = -1e9;
-  private trenchHeadX = -12;
-  private mainLineBuilt = false;
+  private headX = HEAD_X0;
+  private trunkBuilt = false;
+  private bypassBuilt = false;
+  private arcs = { south: false, north: false };
+  private starvedSince = new Map<number, number>();
+  private lastSnapshot = 0;
+  private lastFactoryCheck = -1e9;
+  stage: Stage = 'manual';
 
   constructor(private readonly opts: BotOptions) {
     this.sim = new Sim(opts.seed);
@@ -63,8 +127,8 @@ export class Bot {
     ev.on('tool:bought', (e) => this.mark('tool', String(e.tool)));
     ev.on('building:placed', (e) => { if (e.type !== 'conveyor') this.mark('build', e.type); });
     ev.on('order:completed', (e) => this.mark('order', `${e.id} +$${e.money} +${e.wp}WP`));
-    ev.on('needle:found', (e) => this.mark('NEEDLE', `#${e.index + 1} by ${e.by} (${e.buffName}) progress=${(this.sim.hay.progress() * 100).toFixed(1)}%`));
-    ev.on('needle:returned', (e) => this.mark('needleReturned', `#${e.id} from ${e.where}`));
+    ev.on('needle:found', (e) => this.mark('NEEDLE', `#${e.index + 1} by ${e.by} (${e.buffName}) pile=${(this.sim.hay.progress() * 100).toFixed(1)}%`));
+    ev.on('needle:returned', (e) => this.mark('needleReturned', `#${e.id} from ${e.where}`, false));
     ev.on('milestone', (e) => this.mark('milestone', `${e.name} +${e.wp}WP`, false));
     ev.on('game:completed', () => this.mark('COMPLETE', `${(this.sim.time / 60).toFixed(1)} min`));
   }
@@ -73,7 +137,7 @@ export class Bot {
     const t = this.sim.time;
     this.log.push({ t, kind, detail });
     if (decision) {
-      this.longestNoDecision = Math.max(this.longestNoDecision, t - this.lastDecisionAt);
+      if (t - this.lastDecisionAt > this.longestNoDecision) { this.longestNoDecision = t - this.lastDecisionAt; this.longestNoDecisionAt = this.lastDecisionAt; }
       this.lastDecisionAt = t;
     }
     if (this.opts.verbose) console.log(`${fmt(t)}  ${kind.padEnd(14)} ${detail}`);
@@ -87,9 +151,9 @@ export class Bot {
     const n = Math.max(1, Math.round((seconds * this.opts.humanFactor) / DT));
     for (let i = 0; i < n; i++) {
       this.sim.tick(DT);
-      // keep a held barrow next to the player
       const wb = this.sim.player.wheelbarrow;
       if (wb?.held) { wb.pos.x = this.sim.player.pos.x + 1; wb.pos.z = this.sim.player.pos.z; }
+      if (this.sim.time - this.lastSnapshot >= 300) this.snapshot();
     }
   }
 
@@ -104,6 +168,31 @@ export class Bot {
     p.y = Math.max(0, this.sim.hay.heightAt(x, z) - 0.1);
   }
 
+  private snapshot(): void {
+    const sim = this.sim;
+    this.lastSnapshot = sim.time;
+    let extract = 0;
+    let bottleneck = '';
+    for (const b of sim.buildings.values()) {
+      if (b.type === 'pistonRake' || b.type === 'roboticArm' || b.type === 'vacuumCollector') extract += b.rateOut.value;
+    }
+    const trunk = sim.buildingAtCell(CORNER_X + 1, TZ, 0);
+    const scanner = sim.buildingsOfType('scannerMk1')[0] ?? sim.buildingsOfType('scannerMk2')[0];
+    const blockedArms = sim.buildingsOfType('roboticArm').filter((a) => a.status === 'outputBlocked').length;
+    if (blockedArms) bottleneck += `arms blocked x${blockedArms} `;
+    if (scanner && (scanner.status === 'running' || scanner.status === 'processing') && scanner.info(sim).lines.some((l) => l.tone === 'warn')) bottleneck += 'scanner full ';
+    if (sim.power.totalDemand > sim.power.totalSupply + 0.5) bottleneck += `power ${Math.round(sim.power.totalDemand)}/${Math.round(sim.power.totalSupply)} `;
+    const comp = sim.buildingsOfType('compressor')[0];
+    if (comp && comp.status === 'outputBlocked') bottleneck += 'compressor blocked ';
+    void trunk;
+    this.snapshots.push({
+      t: sim.time, money: Math.round(sim.progress.money), wp: sim.progress.wp, pile: +(sim.hay.progress() * 100).toFixed(1),
+      needles: sim.progress.needlesFound.length, extract: Math.round(extract), delivered: Math.round(sim.progress.stableRate()),
+      power: `${Math.round(sim.power.totalDemand)}/${Math.round(sim.power.totalSupply)}`,
+      machines: sim.progress.stats.machinesBuilt, bottleneck: bottleneck.trim(),
+    });
+  }
+
   // =====================================================================================
   // Economy decisions
   // =====================================================================================
@@ -116,7 +205,12 @@ export class Bot {
       for (const id of TECH_PRIORITY) {
         const node = TECH_BY_ID[id];
         if (!node) continue;
+        const level = pr.nodeLevel(id);
+        if (level >= node.levels.length) continue;
+        if (!node.requires.every((r) => pr.isUnlocked(r))) continue;
         if (pr.canUnlock(id).ok) { pr.unlock(id); changed = true; break; }
+        // Reachable but not affordable: save WP for it.
+        return;
       }
     }
   }
@@ -147,25 +241,30 @@ export class Bot {
   // Manual work
   // =====================================================================================
 
-  private sellPoint(): { x: number; z: number } {
-    const s = this.sim.sellStation!;
+  /** Where the bot drops its hay: the hand-dump hopper once the trunk carries it, else the chute. */
+  private dropTarget(): { b: Building; x: number; z: number } {
+    const sim = this.sim;
+    const hopper = sim.buildingsOfType('hopper')[0];
+    if (hopper && this.trunkBuilt && sim.logistics.isLinked(hopper, 6) && hopper.contents().weight() < sim.stat('hopper.capacity') * 0.6) {
+      const c = hopper.center;
+      return { b: hopper, x: c.x - 0.5, z: c.z + 2 };
+    }
+    const s = sim.sellStation!;
     const c = s.center;
-    return { x: c.x + 2.3, z: c.z };
+    return { b: s, x: c.x + 2.3, z: c.z };
   }
 
   /** Dig until carry (and a parked barrow nearby) is full. */
   private digTrip(): number {
     const sim = this.sim;
-    const sp = this.sellPoint();
-    const target = sim.hay.findTarget(sp.x, sp.z, 90, 'nearest');
+    const dp = this.dropTarget();
+    const target = sim.hay.findTarget(dp.x, dp.z, 90, 'nearest');
     if (!target) return 0;
     const tool = this.bestDigTool();
     sim.player.equipped = tool;
     const reach = tool === 'vacuum' ? sim.stat('tool.vacuum.reach') : sim.stat(`tool.${tool}.reach`);
-    // stand a bit away from the target towards the sell point
-    const dx = sp.x - target.x, dz = sp.z - target.z, dl = Math.hypot(dx, dz) || 1;
+    const dx = dp.x - target.x, dz = dp.z - target.z, dl = Math.hypot(dx, dz) || 1;
     const standX = target.x + (dx / dl) * Math.min(reach * 0.7, 2), standZ = target.z + (dz / dl) * Math.min(reach * 0.7, 2);
-    // park the barrow next to us
     const wb = sim.player.wheelbarrow;
     if (wb?.held) { this.moveTo(standX, standZ); toggleWheelbarrow(sim); }
     else this.moveTo(standX, standZ);
@@ -196,28 +295,28 @@ export class Bot {
       this.moveTo(wb.pos.x - 1, wb.pos.z);
       toggleWheelbarrow(sim);
     }
-    // Feed hungry generators on the way (manual stoking).
+    // Feed hungry generators on the way (manual stoking) until Auto Feed is running.
     for (const g of sim.buildingsOfType('hayGenerator')) {
-      const fuel = (g.anim.fuel ?? 0);
-      if (fuel < 0.5 && sim.stat('generator.autoFeed') < 1 && !sim.player.carry.isEmpty()) {
-        const c = g.center; this.moveTo(c.x - 2, c.z); g.interact(sim); this.advance(0.5);
+      const fed = sim.stat('generator.autoFeed') >= 1 && sim.logistics.isLinked(sim.buildingAtCell(FUEL_SPLIT_X, TZ, 0) ?? g, 0);
+      if (!fed && (g.anim.fuel ?? 0) < 0.5 && !sim.player.carry.isEmpty()) {
+        const c = g.center; this.moveTo(c.x, c.z + 2.5); g.interact(sim); this.advance(0.5);
       }
     }
-    const sp = this.sellPoint();
-    this.moveTo(sp.x, sp.z);
-    sim.sellStation!.interact(sim);
+    const dp = this.dropTarget();
+    this.moveTo(dp.x, dp.z);
+    dp.b.interact(sim);
     this.advance(0.6);
   }
 
-  /** Empty rake trays (semi-automatic phase, before belts). */
+  /** Empty rake trays that are not connected to a belt yet. */
   private emptyTrays(): void {
     const sim = this.sim;
     for (const r of [...sim.buildingsOfType('pistonRake'), ...sim.buildingsOfType('compressor')]) {
-      if (sim.logistics.isLinked(r, 0)) continue;
+      if (sim.logistics.isLinked(r, r.type === 'pistonRake' ? 0 : 2)) continue;
       const inv = r.contents();
       if (inv.weight() < 30) continue;
       const c = r.center;
-      this.moveTo(c.x - 1.5, c.z);
+      this.moveTo(c.x - 2, c.z);
       r.interact(sim);
       this.advance(0.6);
       this.sellTrip();
@@ -227,12 +326,12 @@ export class Bot {
   private detectorSweep(): void {
     const sim = this.sim;
     if (!sim.progress.ownedTools.has('detector')) return;
-    if (sim.time - this.detectorSweepAt < 150) return;
+    const interval = sim.progress.needlesFound.length >= 3 ? 240 : 150;
+    if (sim.time - this.detectorSweepAt < interval) return;
     this.detectorSweepAt = sim.time;
     sim.player.equipped = 'detector';
     const P = WORLD.pile;
     const range = sim.stat('tool.detector.range');
-    // lawnmower sweep over the pile footprint
     for (let z = P.cz - P.rz; z <= P.cz + P.rz; z += range * 1.4) {
       for (let x = P.cx - P.rx; x <= P.cx + P.rx; x += 2) {
         this.moveTo(x, z);
@@ -240,15 +339,15 @@ export class Bot {
         if (r.strength > 0.05 && r.needleId >= 0) {
           const n = sim.hay.needles.find((q) => q.id === r.needleId);
           if (!n) continue;
-          // home in (1.5x the straight distance) and dig down
           const d = Math.hypot(n.pos.x - x, n.pos.z - z);
           this.advance((d * 1.5) / sim.stat('player.moveSpeed'));
           sim.player.pos.x = n.pos.x - 1; sim.player.pos.z = n.pos.z;
           const tool = this.bestDigTool();
-          sim.player.equipped = tool === 'vacuum' ? 'pitchfork' : tool;
+          sim.player.equipped = tool === 'vacuum' ? (sim.progress.ownedTools.has('pitchfork') ? 'pitchfork' : 'shovel') : tool;
           const t2 = sim.player.equipped;
           let guard = 0;
           while (n.status !== 'found' && guard++ < 400) {
+            if (n.status === 'exposed') { this.advance(0.5); sim.foundNeedle(n.id, 'detector', n.pos); break; }
             const h = sim.hay.heightAt(n.pos.x, n.pos.z);
             const res = playerDig(sim, t2, n.pos.x, h, n.pos.z);
             this.advance(sim.stat(`tool.${t2}.interval`));
@@ -261,74 +360,378 @@ export class Bot {
   }
 
   // =====================================================================================
-  // Factory building (trench layout: main belt along z=0 flowing west into the Market Chute)
+  // Building helpers
   // =====================================================================================
 
+  /** Walk next to a site (not onto it) and place. */
   private tryPlace(type: BuildingType, cell: Cell, rot: Rot, variant?: string): Building | null {
-    if (!this.sim.progress.buildingUnlocked(type)) return null;
-    const chk = this.sim.canPlace(type, cell, rot, variant);
+    const sim = this.sim;
+    if (!sim.progress.buildingUnlocked(type)) return null;
+    this.standClearOf(cell);
+    const chk = sim.canPlace(type, cell, rot, variant);
     if (!chk.ok) return null;
-    return this.sim.place(type, cell, rot, variant);
+    const b = sim.place(type, cell, rot, variant);
+    if (b) {
+      sim.rebuildTopology();
+      // Human build overhead: pick the item in the shop, aim, rotate, confirm (belts are dragged).
+      this.advance(type === 'conveyor' ? BUILD_TIME_BELT : BUILD_TIME_MACHINE);
+    }
+    return b;
   }
+
+  private standClearOf(cell: Cell): void {
+    const p = this.sim.player.pos;
+    const tx = cell.x + 0.5, tz = cell.z < TZ ? cell.z - 4.5 : cell.z + 5.5;
+    if (Math.hypot(p.x - tx, p.z - tz) > 3) this.moveTo(tx, tz);
+  }
+
+  private removeAt(x: number, z: number): boolean {
+    const b = this.sim.buildingAtCell(x, z, 0);
+    return b ? this.sim.remove(b.id) : true;
+  }
+
+  /** Replace trunk belts under a machine footprint (x0..x1 on the trunk row) with the machine. */
+  private insertMachine(type: BuildingType, cell: Cell, rot: Rot, x0: number, x1: number): Building | null {
+    const sim = this.sim;
+    if (!sim.progress.buildingUnlocked(type) || sim.progress.money < sim.nextCost(type) + 200) return null;
+    const removed: number[] = [];
+    for (let x = x0; x <= x1; x++) {
+      const b = sim.buildingAtCell(x, TZ, 0);
+      if (b && b.type !== 'conveyor') return null;
+      if (b) { sim.remove(b.id); removed.push(x); }
+    }
+    const m = this.tryPlace(type, cell, rot);
+    if (!m) { for (const x of removed) this.tryPlace('conveyor', { x, z: TZ, level: 0 }, 2); return null; }
+    this.ensurePower(m);
+    return m;
+  }
+
+  /** Make sure a powered building is on a network: place poles (chained if needed). */
+  private ensurePower(b: Building): void {
+    const sim = this.sim;
+    if (!b.needsPower) return;
+    sim.rebuildTopology();
+    if (b.network >= 0) return;
+    if (!sim.progress.buildingUnlocked('powerPole')) return;
+    const range = sim.stat('pole.range');
+    for (let guard = 0; guard < 5 && b.network < 0; guard++) {
+      const nodes = [...sim.buildingsOfType('powerPole'), ...sim.buildingsOfType('hayGenerator')];
+      if (!nodes.length) return;
+      const c = b.center;
+      let best: { cell: Cell; score: number } | null = null;
+      for (let dz = -6; dz <= 6; dz++) for (let dx = -6; dx <= 6; dx++) {
+        const cell: Cell = { x: Math.floor(c.x) + dx, z: Math.floor(c.z) + dz, level: 0 };
+        if (isReserved(cell.x, cell.z)) continue;
+        const pc = { x: cell.x + 0.5, z: cell.z + 0.5 };
+        const dMachine = Math.hypot(pc.x - c.x, pc.z - c.z);
+        if (dMachine > range - 0.5) continue;
+        let dNet = Infinity;
+        for (const n of nodes) dNet = Math.min(dNet, Math.hypot(n.center.x - pc.x, n.center.z - pc.z));
+        if (!sim.canPlace('powerPole', cell, 0).ok) continue;
+        const score = dNet <= range - 0.3 ? dMachine : 1000 + dNet;
+        if (!best || score < best.score) best = { cell, score };
+      }
+      if (!best) return;
+      if (best.score >= 1000) {
+        // Chain towards the nearest network node: place a pole range-1 away from it towards the machine.
+        let near = nodes[0];
+        for (const n of nodes) if (Math.hypot(n.center.x - c.x, n.center.z - c.z) < Math.hypot(near.center.x - c.x, near.center.z - c.z)) near = n;
+        const dx = c.x - near.center.x, dz = c.z - near.center.z, d = Math.hypot(dx, dz) || 1;
+        const k = Math.min(range - 1, d);
+        const tx = Math.floor(near.center.x + (dx / d) * k), tz = Math.floor(near.center.z + (dz / d) * k);
+        let placed = false;
+        for (let r = 0; r <= 2 && !placed; r++) for (let ox = -r; ox <= r && !placed; ox++) for (let oz = -r; oz <= r && !placed; oz++) {
+          const cell: Cell = { x: tx + ox, z: tz + oz, level: 0 };
+          if (isReserved(cell.x, cell.z)) continue;
+          if (this.tryPlace('powerPole', cell, 0)) placed = true;
+        }
+        if (!placed) return;
+      } else if (!this.tryPlace('powerPole', best.cell, 0)) return;
+      sim.rebuildTopology();
+    }
+  }
+
+  // =====================================================================================
+  // Factory
+  // =====================================================================================
 
   private buildFactory(): void {
     const sim = this.sim;
     const pr = sim.progress;
     const money = () => pr.money;
 
-    // 1) Generator + rake (manual stoking, tray emptied by hand)
+    // 1) First generator + head rake (tray emptied by hand until the trunk exists).
     if (sim.ownedCount('hayGenerator') === 0 && pr.buildingUnlocked('hayGenerator') && pr.buildingUnlocked('pistonRake')
       && money() >= sim.nextCost('hayGenerator') + sim.nextCost('pistonRake')) {
-      this.tryPlace('hayGenerator', { x: -15, z: -6, level: 0 }, 0);
+      const g = this.tryPlace('hayGenerator', GEN_SLOTS[0].cell, GEN_SLOTS[0].rot);
+      if (g) this.stage = 'rake';
     }
-    if (sim.ownedCount('pistonRake') === 0 && sim.ownedCount('hayGenerator') > 0) {
-      const edge = this.pileEdgeX(0);
-      this.tryPlace('pistonRake', { x: Math.floor(edge) - 3, z: -1, level: 0 }, 0);
+    if (sim.ownedCount('pistonRake') === 0 && sim.ownedCount('hayGenerator') > 0 && money() >= sim.nextCost('pistonRake')) {
+      const r = this.placeHeadRake(RAKE_X0);
+      if (r) this.ensurePower(r);
     }
-    // 2) Main line: rake output -> belt west -> market chute
-    if (!this.mainLineBuilt && pr.buildingUnlocked('conveyor') && sim.ownedCount('pistonRake') > 0) {
-      const rake = sim.buildingsOfType('pistonRake')[0];
-      const out = rake.ports.find((p) => p.kind === 'out');
-      if (out) {
-        const start = { x: out.cell.x - 1, z: out.cell.z, level: 0 as const };
-        const s = sim.sellStation!;
-        const end = { x: s.cell.x + 3, z: s.cell.z + 1, level: 0 as const };
-        const plan = sim.planBelt(start, end, { mode: 'zFirst', allowLevelChange: false });
-        if (plan.ok && money() >= plan.cost && sim.placeBelt(plan)) { this.mainLineBuilt = true; this.mark('line', `main belt ${plan.steps.length} tiles`); }
+
+    // 2) The trunk: hopper + belts from the head to the chute.
+    if (!this.trunkBuilt && pr.buildingUnlocked('conveyor') && pr.buildingUnlocked('hopper')
+      && money() >= sim.nextCost('hopper') + 30 * sim.nextCost('conveyor')) {
+      this.buildTrunk();
+    }
+    if (!this.trunkBuilt) return;
+
+    // Keep the head rake fed and the trunk growing into the cleared pile.
+    this.advanceHead();
+
+    // 3) Inline machines, in the GDD's order, as plans and money allow.
+    const at = (x: number) => sim.buildingAtCell(x, TZ, 0);
+    if (at(SCAN_X)?.type === 'conveyor' && pr.buildingUnlocked('scannerMk1')) {
+      if (this.insertMachine('scannerMk1', { x: SCAN_X, z: TZ - 1, level: 0 }, 2, SCAN_X, SCAN_X + 2)) this.mark('line', 'scanner MK1 on the trunk');
+    }
+    if (sim.buildingsOfType('scannerMk1').length && !sim.buildingsOfType('scannerMk2').length && pr.buildingUnlocked('scannerMk2')
+      && money() >= sim.nextCost('scannerMk2') + 2000) {
+      const mk1 = sim.buildingsOfType('scannerMk1')[0];
+      const hopper = sim.buildingsOfType('hopper')[0];
+      sim.remove(mk1.id);
+      if (hopper) sim.remove(hopper.id);
+      const b = at(SCAN_X + 3);
+      if (b?.type === 'conveyor') sim.remove(b.id);
+      const mk2 = this.tryPlace('scannerMk2', { x: SCAN_X, z: TZ - 1, level: 0 }, 2);
+      if (mk2) { this.ensurePower(mk2); this.mark('line', 'scanner MK2 replaces MK1'); }
+      else {
+        this.tryPlace('scannerMk1', { x: SCAN_X, z: TZ - 1, level: 0 }, 2);
+        this.tryPlace('conveyor', { x: SCAN_X + 3, z: TZ, level: 0 }, 2);
       }
     }
-    // 3) More extraction: arms along the trench, more rakes at the head.
-    if (this.mainLineBuilt && pr.buildingUnlocked('roboticArm') && money() >= sim.nextCost('roboticArm') * 1.2 && sim.ownedCount('roboticArm') < 10) {
-      this.placeArmNearTrench();
+    // Fuel splitter + second generator (Auto Feed).
+    if (at(FUEL_SPLIT_X)?.type === 'conveyor' && pr.buildingUnlocked('splitter') && pr.isUnlocked('f_autofeed') && money() >= sim.nextCost('splitter') + 100) {
+      if (this.insertMachine('splitter', { x: FUEL_SPLIT_X, z: TZ, level: 0 }, 2, FUEL_SPLIT_X, FUEL_SPLIT_X)) this.mark('line', 'fuel splitter (auto feed)');
     }
-    // 4) Power: poles to reach machines far from generators; more generators when overloaded.
-    if (pr.buildingUnlocked('hayGenerator') && sim.power.totalDemand > sim.power.totalSupply * 0.95 && money() >= sim.nextCost('hayGenerator') * 1.5) {
-      this.tryPlace('hayGenerator', { x: -15 - 4 * sim.ownedCount('hayGenerator'), z: -6, level: 0 }, 0);
+    // Processing bypass: splitter + belt round to the chute's north input.
+    if (!this.bypassBuilt && pr.buildingUnlocked('splitter') && (pr.buildingUnlocked('silo') || pr.buildingUnlocked('compressor'))
+      && money() >= sim.nextCost('splitter') + 40 * sim.nextCost('conveyor')) {
+      this.buildBypass();
     }
+    if (this.bypassBuilt) {
+      if (at(SILO_X + 1)?.type === 'conveyor' && pr.buildingUnlocked('silo')) {
+        if (this.insertMachine('silo', { x: SILO_X, z: TZ - 1, level: 0 }, 2, SILO_X, SILO_X + 2)) this.mark('line', 'silo');
+      }
+      if (at(COMP_X + 1)?.type === 'conveyor' && pr.buildingUnlocked('compressor')) {
+        if (this.insertMachine('compressor', { x: COMP_X, z: TZ - 1, level: 0 }, 2, COMP_X, COMP_X + 2)) this.mark('line', 'compressor');
+      }
+      if (at(WRAP_X + 1)?.type === 'conveyor' && sim.buildingsOfType('compressor').length && pr.buildingUnlocked('wrapper')) {
+        if (this.insertMachine('wrapper', { x: WRAP_X, z: TZ - 1, level: 0 }, 2, WRAP_X, WRAP_X + 2)) this.mark('line', 'wrapper');
+      }
+    }
+
+    // 4) Power: second generator when short, generator upgrades are tech.
+    const short = sim.power.totalDemand > sim.power.totalSupply * 0.95;
+    if (short && sim.ownedCount('hayGenerator') < GEN_SLOTS.length && money() >= sim.nextCost('hayGenerator') * 1.2) {
+      const slot = GEN_SLOTS[sim.ownedCount('hayGenerator')];
+      const g = this.tryPlace('hayGenerator', slot.cell, slot.rot);
+      if (g) { g.interact(sim); }
+    }
+
+    // Feeder arcs around the pile foot for arms (and later collectors).
+    if (pr.buildingUnlocked('roboticArm')) {
+      if (!this.arcs.south && money() >= sim.nextCost('conveyor') * 40 + sim.nextCost('roboticArm')) this.buildArc(1);
+      else if (this.arcs.south && !this.arcs.north && money() >= sim.nextCost('hopper') + sim.nextCost('conveyor') * 40 + sim.nextCost('roboticArm')) this.buildArc(-1);
+    }
+
+    // 5) Extraction along the belts (only while power is not the bottleneck).
+    if (!short || sim.ownedCount('hayGenerator') < GEN_SLOTS.length) this.addExtractors();
+
+    // 6) Move starved extractors forward.
+    this.relocateStarved();
   }
 
-  private pileEdgeX(z: number): number {
-    for (let x = WORLD.interior.minX; x < WORLD.interior.maxX; x += 0.5) if (this.sim.hay.heightAt(x, z) > 0.3) return x;
-    return WORLD.pile.cx;
-  }
-
-  private placeArmNearTrench(): void {
+  /** Belt arc along the pile's south (side 1) or north (side -1) foot, ending in a hopper beside the trunk. */
+  private buildArc(side: 1 | -1): void {
     const sim = this.sim;
-    // Find a belt tile close to hay and put an arm beside it dropping onto it.
-    const belts = sim.buildingsOfType('conveyor');
-    let best: { cell: Cell; rot: Rot; score: number } | null = null;
-    for (const b of belts) {
-      for (const side of [-1, 1]) {
-        const cell = { x: b.cell.x, z: b.cell.z + side, level: 0 as const };
-        const rot: Rot = side < 0 ? 1 : 3; // face the belt
-        const c = buildingCenter('roboticArm', cell, rot);
-        const hay = sim.hay.unitsInRadius(c.x, c.z, sim.stat('arm.reach'));
-        if (hay < 400) continue;
-        if (!sim.canPlace('roboticArm', cell, rot).ok) continue;
-        if (!best || hay > best.score) best = { cell, rot, score: hay };
+    if (side < 0 && !sim.buildingsOfType('hopper').some((h) => h.cell.z === HOPPER_N_CELL.z)) {
+      if (!this.tryPlace('hopper', HOPPER_N_CELL, 1)) { this.mark('warn', 'north hopper blocked', false); }
+    }
+    const z = side * ARC_Z;
+    const tiles: { x: number; z: number; rot: Rot }[] = [];
+    for (let x = ARC_X_EAST; x > -10; x--) tiles.push({ x, z, rot: 2 });
+    const colRot: Rot = side > 0 ? 3 : 1;
+    tiles.push({ x: -10, z, rot: colRot });
+    const zEnd = side > 0 ? 3 : -3;
+    for (let zz = z - side; side > 0 ? zz >= zEnd : zz <= zEnd; zz -= side) tiles.push({ x: -10, z: zz, rot: colRot });
+    let placed = 0;
+    for (const t of tiles) {
+      if (sim.buildingAtCell(t.x, t.z, 0)) continue;
+      if (this.tryPlace('conveyor', { x: t.x, z: t.z, level: 0 }, t.rot)) placed++;
+    }
+    if (side > 0) this.arcs.south = true; else this.arcs.north = true;
+    this.mark('line', `${side > 0 ? 'south' : 'north'} feeder arc (${placed} tiles)`);
+  }
+
+  private placeHeadRake(x: number): Building | null {
+    return this.tryPlace('pistonRake', { x, z: TZ - 1, level: 0 }, 0);
+  }
+
+  private buildTrunk(): void {
+    const sim = this.sim;
+    const tiles: { x: number; z: number; rot: Rot }[] = [];
+    for (let x = HEAD_X0; x > CORNER_X; x--) tiles.push({ x, z: TZ, rot: 2 });
+    for (let z = TZ; z < 5; z++) tiles.push({ x: CORNER_X, z, rot: 1 });
+    tiles.push({ x: CORNER_X, z: 5, rot: 2 });
+    for (const t of tiles) {
+      if (sim.buildingAtCell(t.x, t.z, 0)) continue;
+      if (!this.tryPlace('conveyor', { x: t.x, z: t.z, level: 0 }, t.rot)) {
+        this.mark('warn', `trunk tile blocked at ${t.x},${t.z}`, false);
       }
     }
-    if (best) this.tryPlace('roboticArm', best.cell, best.rot);
+    const hopper = this.tryPlace('hopper', HOPPER_CELL, 3);
+    this.trunkBuilt = true;
+    this.stage = 'trunk';
+    this.mark('line', `trunk built (${tiles.length} tiles)${hopper ? ' + hand-dump hopper' : ''}`);
+  }
+
+  private buildBypass(): void {
+    const sim = this.sim;
+    const sp = this.insertMachine('splitter', { x: PROC_SPLIT_X, z: TZ, level: 0 }, 2, PROC_SPLIT_X, PROC_SPLIT_X);
+    if (!sp) return;
+    const tiles: { x: number; z: number; rot: Rot }[] = [];
+    for (let z = TZ - 1; z > -4; z--) tiles.push({ x: PROC_SPLIT_X, z, rot: 3 });
+    tiles.push({ x: PROC_SPLIT_X, z: -4, rot: 2 });
+    for (let x = PROC_SPLIT_X - 1; x > -30; x--) tiles.push({ x, z: -4, rot: 2 });
+    for (let z = -4; z < 5; z++) tiles.push({ x: -30, z, rot: 1 });
+    for (const t of tiles) {
+      if (sim.buildingAtCell(t.x, t.z, 0)) continue;
+      if (!this.tryPlace('conveyor', { x: t.x, z: t.z, level: 0 }, t.rot)) this.mark('warn', `bypass tile blocked at ${t.x},${t.z}`, false);
+    }
+    this.bypassBuilt = true;
+    this.mark('line', 'processing splitter + bypass');
+  }
+
+  /** Move the head rake forward when it runs dry and extend the trunk behind it. */
+  private advanceHead(): void {
+    const sim = this.sim;
+    const rake = sim.buildingsOfType('pistonRake').find((r) => r.rot === 0 && r.cell.z === TZ - 1);
+    if (!rake) {
+      if (sim.progress.money >= sim.nextCost('pistonRake') + 500) {
+        const r = this.placeHeadRake(this.headX + 1);
+        if (r) this.ensurePower(r);
+      }
+      return;
+    }
+    if (rake.status !== 'noHay') return;
+    const maxX = WORLD.interior.maxX - 3;
+    for (let nx = rake.cell.x + 1; nx <= maxX; nx++) {
+      if (!sim.canMove(rake.id, { x: nx, z: TZ - 1, level: 0 }, 0).ok) continue;
+      const oldX = rake.cell.x;
+      if (!sim.move(rake.id, { x: nx, z: TZ - 1, level: 0 }, 0)) return;
+      this.advance(MOVE_TIME);
+      for (let x = oldX; x < nx; x++) {
+        if (!sim.buildingAtCell(x, TZ, 0)) this.tryPlace('conveyor', { x, z: TZ, level: 0 }, 2);
+      }
+      this.headX = nx - 1;
+      this.ensurePower(rake);
+      sim.rebuildTopology();
+      return;
+    }
+  }
+
+  /** Belt tiles that extractors may side-load onto. */
+  private slotBelts(): Building[] {
+    const out: Building[] = [];
+    for (const b of this.sim.buildingsOfType('conveyor')) {
+      if (b.cell.x < HEAD_X0 - 1 && Math.abs(b.cell.z) < ARC_Z - 1) continue; // processing / chute area
+      if (b.cell.x < -11) continue;
+      out.push(b);
+    }
+    return out;
+  }
+
+  /**
+   * Candidate slots for an extractor next to any feeder belt: the machine's output faces the belt's side and
+   * its front faces away from the belt (into the pile).
+   */
+  private sideSlots(type: BuildingType): { cell: Cell; rot: Rot }[] {
+    const out: { cell: Cell; rot: Rot }[] = [];
+    const def = BUILDABLES[type];
+    const outPort = def.ports.find((p) => p.kind === 'out')!;
+    for (const belt of this.slotBelts()) {
+      const flow = belt.rot as Dir;
+      for (const side of [((flow + 1) & 3) as Dir, ((flow + 3) & 3) as Dir]) {
+        // Machine rotation: its out-port (local dir outPort.dir) must face back towards the belt.
+        const want = oppositeDir(side);
+        const rot = (((want - outPort.dir) % 4) + 4) % 4 as Rot;
+        const [w, d] = def.footprint;
+        const [ox, oz] = localToOffset(outPort.cell[0], outPort.cell[1], w, d, rot);
+        const portCell = { x: belt.cell.x + DIR_DX[side], z: belt.cell.z + DIR_DZ[side] };
+        out.push({ cell: { x: portCell.x - ox, z: portCell.z - oz, level: 0 }, rot });
+      }
+    }
+    return out;
+  }
+
+  private reachOf(type: BuildingType): number {
+    const s = this.sim;
+    return type === 'roboticArm' ? s.stat('arm.reach') : type === 'vacuumCollector' ? s.stat('collector.radius') : s.stat('rake.reach');
+  }
+
+  private bestSlot(type: BuildingType, ignoreId = 0): { cell: Cell; rot: Rot; hay: number } | null {
+    const sim = this.sim;
+    let best: { cell: Cell; rot: Rot; hay: number } | null = null;
+    const reach = this.reachOf(type);
+    for (const s of this.sideSlots(type)) {
+      const chk = ignoreId ? sim.canMove(ignoreId, s.cell, s.rot) : sim.canPlace(type, s.cell, s.rot);
+      if (!chk.ok && !(chk.reason ?? '').startsWith('Need $')) continue;
+      const c = buildingCenter(type, s.cell, s.rot);
+      let hay: number;
+      if (type === 'pistonRake') {
+        const [w] = rotatedSize(BUILDABLES[type], s.rot);
+        const off = w / 2 + reach / 2;
+        hay = sim.hay.unitsInRadius(c.x + DIR_DX[s.rot] * off, c.z + DIR_DZ[s.rot] * off, reach / 2);
+      } else hay = sim.hay.unitsInRadius(c.x, c.z, reach);
+      // Share hay with neighbours of the same kind.
+      for (const o of sim.buildingsOfType(type)) {
+        if (o.id === ignoreId) continue;
+        const d = Math.hypot(o.center.x - c.x, o.center.z - c.z);
+        if (d < reach * 1.2) hay *= 0.6;
+      }
+      if (!best || hay > best.hay) best = { ...s, hay };
+    }
+    return best;
+  }
+
+  private addExtractors(): void {
+    const sim = this.sim;
+    const pr = sim.progress;
+    const order: BuildingType[] = ['vacuumCollector', 'roboticArm', 'pistonRake'];
+    for (const type of order) {
+      if (!pr.buildingUnlocked(type)) continue;
+      const cap = type === 'roboticArm' ? 14 : type === 'vacuumCollector' ? 4 : 4;
+      if (sim.ownedCount(type) >= cap) continue;
+      const cost = sim.nextCost(type);
+      if (pr.money < cost * 1.15 + 300) continue;
+      const slot = this.bestSlot(type);
+      const minHay = type === 'vacuumCollector' ? 3000 : 800;
+      if (!slot || slot.hay < minHay) continue;
+      const b = this.tryPlace(type, slot.cell, slot.rot);
+      if (b) { this.ensurePower(b); return; }
+    }
+  }
+
+  private relocateStarved(): void {
+    const sim = this.sim;
+    for (const b of sim.buildings.values()) {
+      if (b.type !== 'roboticArm' && b.type !== 'vacuumCollector' && !(b.type === 'pistonRake' && b.rot !== 0)) continue;
+      if (b.status !== 'noHay') { this.starvedSince.delete(b.id); continue; }
+      const since = this.starvedSince.get(b.id) ?? sim.time;
+      this.starvedSince.set(b.id, since);
+      if (sim.time - since < 20) continue;
+      const slot = this.bestSlot(b.type, b.id);
+      if (!slot || slot.hay < 600) continue;
+      this.standClearOf(slot.cell);
+      if (sim.move(b.id, slot.cell, slot.rot)) {
+        this.advance(MOVE_TIME);
+        this.starvedSince.delete(b.id);
+        sim.rebuildTopology();
+        this.ensurePower(b);
+      }
+    }
   }
 
   // =====================================================================================
@@ -338,20 +741,20 @@ export class Bot {
   run(): { completed: boolean; minutes: number } {
     const sim = this.sim;
     const maxT = this.opts.maxMinutes * 60;
+    this.snapshot();
     while (sim.time < maxT && !sim.completed) {
       this.spendWP();
       this.buyTools();
-      this.buildFactory();
+      if (sim.time - this.lastFactoryCheck > 5) { this.lastFactoryCheck = sim.time; this.buildFactory(); }
       this.detectorSweep();
       this.emptyTrays();
-      // Manual work continues all game long (players keep digging while the factory runs).
       const cap = carryCapacity(sim);
       if (cap > 0) {
         this.digTrip();
         this.sellTrip();
       } else this.advance(1);
-      void BUILDABLES;
     }
+    this.snapshot();
     return { completed: sim.completed, minutes: sim.time / 60 };
   }
 }
