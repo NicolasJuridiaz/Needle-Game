@@ -12,3 +12,5 @@ Prioridades: **P0** impide jugar · **P1** rompe sistema importante · **P2** bu
 | B006 | P2 | Logística | Un pase de logística añadía un "giro automático" en cintas sin salida (no está en GDD/spec, el render no lo dibujaba). Retirado. | FIXED (f54f080) |
 | B007 | P2 | Tests | `tests/integration.test.ts`: escáner solapando el generador, cadena de producción sin cintas, brazos sin energía, esquina sin rotar, `beltX` de 1 tile con dirección errónea. | FIXED |
 | B008 | P1 | Progresión | Generador sin carga no quemaba nada → el Order "Stoke the Fire" (quemar 300 hay) no avanzaba alimentándolo con E, y era el único Order activo → bloqueo de WP. Ahora quema una llama piloto (25 %). | FIXED |
+| B009 | P2 | Render / Pajar | La mitad de las matas de paja se veían marrón oscuro: material `DoubleSide` invierte la normal en caras traseras. Ahora ambas caras en la geometría + `FrontSide`. | FIXED |
+| B010 | P3 | Consola | 404 de `/favicon.ico` en cada carga. Añadido favicon vacío inline. | FIXED |

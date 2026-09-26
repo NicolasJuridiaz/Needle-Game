@@ -7,7 +7,7 @@ Usage:
 Prints console errors (always) and all console messages with --console.
 Start a dev server first, e.g.:  npx vite --host 127.0.0.1 --port 5301 --strictPort
 """
-import argparse, sys
+import argparse, os, sys
 from playwright.sync_api import sync_playwright
 
 ap = argparse.ArgumentParser()
@@ -20,7 +20,8 @@ ap.add_argument('--console', action='store_true')
 a = ap.parse_args()
 
 with sync_playwright() as p:
-    b = p.chromium.launch(args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'])
+    exe = os.environ.get('PW_CHROMIUM', '/opt/pw-browsers/chromium')
+    b = p.chromium.launch(executable_path=exe if os.path.exists(exe) else None, args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'])
     pg = b.new_page(viewport={'width': a.w, 'height': a.h})
     msgs = []
     pg.on('console', lambda m: msgs.append((m.type, m.text)))

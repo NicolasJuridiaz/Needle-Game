@@ -74,7 +74,9 @@ export class HayView {
     this.tuftMaterial = new THREE.MeshStandardMaterial({
       map: tuftTexture(),
       alphaTest: 0.42,
-      side: THREE.DoubleSide,
+      // Both windings are in the geometry (sharing the up-facing normals); DoubleSide would flip the
+      // normal on back faces and light every tuft seen from behind as if it faced the floor.
+      side: THREE.FrontSide,
       roughness: 0.9,
       metalness: 0,
       envMapIntensity: 0.5,
@@ -408,6 +410,7 @@ function createTuftGeometry(): THREE.BufferGeometry {
     }
     const b = q * 4;
     idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+    idx.push(b, b + 2, b + 1, b, b + 3, b + 2);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
