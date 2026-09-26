@@ -40,6 +40,10 @@ describe('AutoQuality (low-FPS failsafe)', () => {
     expect(play(a, 60, 60, 'medium')).toBeNull();
   });
 
+  it('still triggers on a software-rendered GPU (~1 FPS, every frame near a second)', () => {
+    expect(play(new AutoQuality(), 1.3, 60, 'medium')).toBe('low');
+  });
+
   it('does not decide before a full window of gameplay', () => {
     expect(play(new AutoQuality(), 10, AUTO_QUALITY_WINDOW - 1, 'medium')).toBeNull();
   });

@@ -4,8 +4,11 @@ import type { Quality } from '../render/quality';
 export const AUTO_QUALITY_WINDOW = 15;
 /** Average FPS over a window below this lowers the preset one step. */
 export const AUTO_QUALITY_MIN_FPS = 24;
-/** Frames longer than this (tab switch, breakpoint, alt-tab) are not counted at all. */
-const MAX_COUNTED_FRAME = 0.5;
+/**
+ * Frames longer than this (coming back from a hidden tab, a breakpoint, a long GC pause) are not counted.
+ * Slow frames below it are: a software-rendered GPU runs at ~1 FPS and must still trigger the failsafe.
+ */
+const MAX_COUNTED_FRAME = 2;
 /** Seconds ignored after a quality change or when gameplay (re)starts: shader compiles, texture uploads. */
 const SETTLE = 3;
 

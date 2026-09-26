@@ -8,3 +8,4 @@ Ideas registradas durante el desarrollo que NO entran en la V1 (control de scope
 - Rampas en el planificador de cintas (hoy los cambios de nivel usan siempre Belt Lift).
 - Modo "replay" del bot de balance dentro del navegador para demos/tráiler.
 - Indicador visual de "side-loading" (flecha lateral) en cintas alimentadas por máquinas.
+- Fuente/sumidero de WP post-partida (p. ej. orders repetibles tras completar): hoy una partida da 163 de los 235 WP del Work Tree a propósito (D13); solo si el playtest pide completar el árbol en "Keep Playing".

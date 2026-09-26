@@ -379,7 +379,31 @@ order; save round-trip; dig respects capacity & cooldown; barrow overflow; manua
 ## 5. Render (`src/render/*`)
 
 - `Renderer` class: `THREE.WebGLRenderer` (antialias on high), sRGB output, ACES tone mapping,
-  pixelRatio = min(devicePixelRatio, quality high 2 / medium 1.5 / low 1). Resize to the container.
+  pixelRatio = min(devicePixelRatio, quality high 2 / medium 1.5 / low 1), lowered further so the drawing
+  buffer stays within a pixel budget (high 3840×2160 / medium 2560×1440 / low 1920×1080, never below 0.5;
+  `effectivePixelRatio`). Resize to the container; browser zoom / monitor changes re-evaluate the DPR.
+- Quality presets (`src/render/quality.ts`), default **Medium** for new players, switchable live from
+  Settings (only MSAA, on High, needs a reload — the panel says so):
+
+  | | High | Medium | Low |
+  |---|---|---|---|
+  | Pixel ratio cap / budget | 2 / 4K | 1.5 / 1440p | 1 / 1080p |
+  | MSAA | on | off | off |
+  | Sun shadows | 2048, soft, belt items cast | 1024 | off |
+  | Lamps (point lights) | 4 | 3 | 2 |
+  | Straw tufts | 4000 | 2000 | 800 |
+  | Particles cap | 1500 | 900 | 400 |
+  | Dust motes / light shafts | 700 / on | 400 / on | 0 / off |
+  | Anisotropy / floor texture | 8 / 2048 | 4 / 2048 | 2 / 1024 |
+  | Cable segments | 12 | 8 | 5 |
+
+  Measured in the late-game stress save (151 buildings, 111 belts), same view, 1280×720:
+  Low 30 draw calls / 145 k triangles, Medium 113 / 338 k, High 117 / 393 k (the shadow pass is the
+  difference). Buildings are merged per building and belts/items/tufts are instanced.
+- GPU failsafes: WebGL context loss is `preventDefault`ed so the browser can restore it; no WebGL at boot
+  shows a "turn on hardware acceleration" message; `src/game/autoQuality.ts` lowers the preset one step
+  (High → Medium → Low, with a toast) when gameplay averages < 24 FPS over 15 s, unless the player picked
+  a quality in Settings (`settings.qualityManual`).
 - Scene: warehouse interior (concrete floor with subtle painted grid, corrugated metal walls, timber/steel
   trusses, skylights with light shafts, big sliding door on the west wall with the Market Chute, the
   closed north annex wall with "EXPANSION" signage that can be removed (`setAnnexOpen(bool)`), outdoor

@@ -373,7 +373,7 @@ export class Game implements UIContext {
     const time = now / 1000;
     this.sessionTime += dt;
     this.frameCount++;
-    this.fpsTime += dt;
+    this.fpsTime += rawDt; // real frame time: the clamped dt would report >= 10 FPS on a 2 FPS machine
     if (this.fpsTime >= 0.5) { this.fps = this.frameCount / this.fpsTime; this.frameCount = 0; this.fpsTime = 0; }
     this.checkFrameRate(rawDt);
 
