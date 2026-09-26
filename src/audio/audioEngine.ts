@@ -73,6 +73,15 @@ export class AudioEngine implements IAudio {
       this.applyVolumes();
       this.music.setEnabled(this.musicEnabled);
       void this.renderLoops();
+      // Browsers (iOS especially) suspend/interrupt the context in the background; it may only be resumed
+      // from a user gesture, so try again on the next click / key press.
+      const revive = () => {
+        const st = this.ctx?.state as string | undefined;
+        if (this.ctx && !this.paused && (st === 'suspended' || st === 'interrupted')) void this.ctx.resume().catch(() => undefined);
+      };
+      window.addEventListener('pointerdown', revive, { passive: true });
+      window.addEventListener('keydown', revive, { passive: true });
+      window.addEventListener('touchend', revive, { passive: true });
     }
     if (this.ctx.state === 'suspended' && !this.paused) void this.ctx.resume().catch(() => undefined);
   }
