@@ -330,6 +330,21 @@ export class GameTelemetry {
   // Game hooks
   // ===================================================================================
 
+  /**
+   * The player just allowed remote analytics. Sends ONE snapshot of where measurement starts. Everything that happened
+   * before (session start, first_*, purchases ...) stays local: those keys are already in `fired`, so they are
+   * never sent later either.
+   */
+  onConsentGranted(source: 'prompt' | 'settings'): void {
+    const s = this.sim;
+    this.d.analytics.track('analytics_consent_granted', {
+      source,
+      stage: s ? runStage(s) : 'none',
+      has_active_run: !!s && s.time > 0 && !s.completed,
+      ...(s ? factory(s) : {}),
+    });
+  }
+
   /** The player clicked into the game. */
   onPlayerStart(): void {
     this.first('first_input');

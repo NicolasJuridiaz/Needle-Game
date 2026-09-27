@@ -1292,7 +1292,15 @@
 .pn-wb-row { display: flex; justify-content: space-between; gap: 1.5em; padding: 0.28em 0; border-top: 1px solid var(--line-2); }
 .pn-wb-row span { color: var(--ink-2); }
 .pn-wb-row b { color: #fff3d0; text-align: right; font-weight: 700; }
-/* Analytics notice (CrazyGames "User Consent": simple notice, not a blocking pop-up). The overlay is click-through; only the link takes clicks. */
-.pn-ctp-privacy { max-width: 40em; font-size: calc(var(--u) * 0.72); color: var(--ink-3); text-align: center; text-shadow: 0 1px 3px #000; }
-.pn-ctp-privacy:empty { display: none; }
-.pn-ctp-privacy a { pointer-events: auto; color: var(--hay); text-decoration: underline; }
+/* Analytics consent card (opt-in, P0.1): top-right, compact, both choices equal. The title overlay is click-through;
+   the card takes its own clicks. */
+.pn-consent { display: none; position: absolute; top: calc(var(--u) * 0.9); right: calc(var(--u) * 0.9); width: min(21em, 42vw); padding: 0.75em 0.9em; border-radius: var(--r-lg); background: rgba(18, 14, 9, 0.93); border: 1px solid var(--line); box-shadow: 0 0.5em 1.6em rgba(0, 0, 0, 0.5); font-size: calc(var(--u) * 0.74); color: var(--ink-2); text-align: left; pointer-events: auto; }
+.pn-consent.is-on { display: block; }
+.pn-consent-title { font-size: 1.15em; font-weight: 800; color: var(--hay); margin-bottom: 0.3em; }
+.pn-consent-text { line-height: 1.35; }
+.pn-consent-text a { color: var(--hay); text-decoration: underline; }
+.pn-consent-actions { display: flex; gap: 0.5em; margin-top: 0.6em; }
+.pn-consent-btn { flex: 1 1 0; min-height: 2.4em; padding: 0.4em 0.5em; border-radius: var(--r-md, 8px); border: 1px solid var(--line); background: #2a2217; color: #fff3d0; font: inherit; font-weight: 700; cursor: pointer; }
+.pn-consent-btn:hover { background: #3a2f1f; border-color: var(--hay); }
+.pn-set-link { display: inline-block; margin: 0.1em 0 0.3em; font-size: 0.85em; color: var(--hay); text-decoration: underline; }
+.pn-toggle:disabled { opacity: 0.4; cursor: default; }

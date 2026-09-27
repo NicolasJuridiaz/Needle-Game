@@ -37,6 +37,7 @@ export class SettingsPanel {
   private readonly toggles: { def: ToggleDef; btn: HTMLButtonElement }[] = [];
   private readonly quality: HTMLButtonElement[] = [];
   private qualityDesc!: HTMLElement;
+  private privacy: { btn: HTMLButtonElement; desc: HTMLElement; link: HTMLAnchorElement } | null = null;
 
   constructor(private readonly env: PartEnv, parent: HTMLElement) {
     this.el = h('div', 'pn-settings', parent);
@@ -66,8 +67,53 @@ export class SettingsPanel {
     }
     this.toggle(display, { key: 'showFps', label: 'Show FPS counter' });
 
-    const privacy = this.group('Privacy');
-    this.toggle(privacy, { key: 'shareAnalytics', label: 'Share anonymous gameplay statistics', desc: 'Progress and performance only, no personal data' });
+    this.privacyRow(this.group('Privacy'));
+  }
+
+  /**
+   * Analytics consent row: shows the REAL state (unknown shows as off, "not allowed yet"). Switching it on is an
+   * explicit consent (grant); switching it off withdraws it. Disabled when the build cannot send analytics.
+   */
+  private privacyRow(parent: HTMLElement): void {
+    const row = h('div', 'pn-set-row', parent);
+    const lab = h('span', 'pn-set-label', row, 'Share anonymous gameplay statistics');
+    const desc = h('small', 'pn-set-desc', lab);
+    const btn = h('button', 'pn-toggle', row);
+    btn.type = 'button';
+    btn.setAttribute('role', 'switch');
+    btn.innerHTML = '<i></i>';
+    wireSounds(this.env, btn);
+    const link = document.createElement('a');
+    link.className = 'pn-set-link';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'Privacy policy';
+    parent.appendChild(link);
+    btn.addEventListener('click', () => {
+      const c = this.env.ctx.getAnalyticsConsent?.();
+      if (!c?.available) return;
+      this.env.ctx.actions.setAnalyticsConsent?.(!c.on, 'settings');
+      this.sync();
+    });
+    this.privacy = { btn, desc, link };
+  }
+
+  private syncPrivacy(): void {
+    if (!this.privacy) return;
+    const { btn, desc, link } = this.privacy;
+    const c = this.env.ctx.getAnalyticsConsent?.();
+    const available = !!c?.available;
+    const on = !!c?.on;
+    btn.classList.toggle('is-on', on);
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    btn.disabled = !available;
+    desc.textContent = !available ? 'Not available in this version'
+      : on ? 'On - helps us improve the game. Turn off any time.'
+      : c?.state === 'denied' ? 'Off - nothing is sent'
+      : 'Not allowed yet - nothing is sent until you turn this on';
+    const url = c?.policyUrl ?? null;
+    link.style.display = available && url ? '' : 'none';
+    if (url) link.href = url;
   }
 
   private group(title: string): HTMLElement {
@@ -136,6 +182,7 @@ export class SettingsPanel {
       t.btn.setAttribute('aria-checked', on ? 'true' : 'false');
     }
     QUALITY.forEach((q, i) => this.quality[i].classList.toggle('is-active', s.quality === q));
+    this.syncPrivacy();
     const reload = (this.env.ctx as UIContextLike).graphicsReloadRequired?.() === true;
     this.qualityDesc.textContent = reload ? RELOAD_NOTE : QUALITY_DESC[s.quality] ?? '';
     // Highlighted (hay accent) while a reload is pending; styles.css has no dedicated class for it.

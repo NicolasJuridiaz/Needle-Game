@@ -8,6 +8,8 @@
 
 /** Events forwarded to the remote adapter (ByteBrew). */
 export const REMOTE_EVENTS = [
+  // consent (first remote event after the player allows analytics; nothing from before is replayed)
+  'analytics_consent_granted',
   // session / run
   'game_session_start', 'run_start', 'run_complete',
   // first-session funnel (once per run)

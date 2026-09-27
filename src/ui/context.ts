@@ -5,6 +5,17 @@ import type { BuildingType, SplitterMode, ToolId } from '../sim/types';
 import type { Settings } from '../game/settings';
 import type { WelcomeBackInfo } from '../game/welcomeBack';
 
+export interface AnalyticsConsentView {
+  state: 'unknown' | 'granted' | 'denied';
+  /** Remote analytics possible in this build/page (keys + privacy policy URL + no ?analytics=0). */
+  available: boolean;
+  /** Settings toggle on (granted and available). */
+  on: boolean;
+  /** Show the title-screen card. */
+  prompt: boolean;
+  policyUrl: string | null;
+}
+
 /**
  * UI CONTRACT. The game (src/game/game.ts) implements UIContext; the UI (src/ui/*) renders DOM from it.
  * The UI never mutates the sim directly - it calls `actions`.
@@ -69,6 +80,8 @@ export interface UIActions {
   toggleBuildingEnabled(id: number): void;
   setSplitterMode(id: number, mode: SplitterMode, filter?: number): void;
   playUiSound(id: 'uiClick' | 'uiHover' | 'uiOpen' | 'uiClose' | 'deny' | 'buy' | 'unlock'): void;
+  /** Explicit analytics choice: allow (grant) or not (deny / withdraw). Optional for test doubles. */
+  setAnalyticsConsent?(allow: boolean, source: 'prompt' | 'settings'): void;
 }
 
 export interface UIContext {
@@ -89,6 +102,6 @@ export interface UIContext {
   isTouchOnly(): boolean;
   /** Welcome Back card after a real absence (read-only), null otherwise. Optional for test doubles. */
   getWelcomeBack?(): WelcomeBackInfo | null;
-  /** Analytics notice on the title screen (CrazyGames "User Consent"), null when nothing is sent remotely. */
-  getPrivacyNotice?(): { policyUrl: string | null } | null;
+  /** Analytics consent (opt-in): title-screen card + Settings row. Optional for test doubles. */
+  getAnalyticsConsent?(): AnalyticsConsentView;
 }

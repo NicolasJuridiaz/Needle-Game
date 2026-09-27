@@ -32,6 +32,15 @@ export type ByteBrewLoader = () => Promise<ByteBrewApi>;
 export const BYTEBREW_INIT_TIMEOUT_MS = 10_000;
 const POLL_MS = 250;
 
+/**
+ * ByteBrew's own "tracking stopped" flag: stopTracking() writes the cookie `bb_tr_on=false` (observed with
+ * bytebrew-web-sdk 1.0.1), and while it is there initializeByteBrew() refuses to start ("Tracking is disabled.
+ * Not initializing."), even on a later page load.
+ */
+export function byteBrewTrackingStopped(cookie: string | undefined = typeof document === 'undefined' ? undefined : document.cookie): boolean {
+  return !!cookie && /(?:^|;\s*)bb_tr_on=false(?:;|$)/.test(cookie);
+}
+
 const defaultLoader: ByteBrewLoader = async () => (await import('bytebrew-web-sdk')).ByteBrew as unknown as ByteBrewApi;
 
 export class ByteBrewAnalyticsAdapter implements AnalyticsAdapter {
@@ -46,11 +55,15 @@ export class ByteBrewAnalyticsAdapter implements AnalyticsAdapter {
     private readonly loader: ByteBrewLoader = defaultLoader,
     private readonly timeoutMs = BYTEBREW_INIT_TIMEOUT_MS,
     private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+    private readonly trackingStopped: () => boolean = () => byteBrewTrackingStopped(),
   ) {}
 
   async init(): Promise<boolean> {
     try {
       this.api = await this.loader();
+      // init() only runs after the player explicitly granted consent. If an earlier withdrawal left ByteBrew's
+      // "tracking stopped" flag, clear it with the SDK's own restartTracking() first, or initialisation is refused.
+      if (this.trackingStopped()) this.api.restartTracking();
       this.api.initializeByteBrew(this.cfg.appId, this.cfg.sdkKey, this.cfg.appVersion);
       for (let waited = 0; waited <= this.timeoutMs; waited += POLL_MS) {
         if (this.api.isByteBrewInitialized()) { this.ready = true; return true; }

@@ -14,8 +14,6 @@ export interface Settings {
   showFps: boolean;
   /** Toggle vs hold for continuous digging. */
   holdToDig: boolean;
-  /** Send anonymous gameplay statistics (docs/ANALYTICS_PRIVACY_NOTES.md). Off: nothing leaves the browser. */
-  shareAnalytics: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -30,7 +28,6 @@ export const DEFAULT_SETTINGS: Settings = {
   qualityManual: false,
   showFps: false,
   holdToDig: true,
-  shareAnalytics: true,
 };
 
 export function sanitizeSettings(s: Partial<Settings> | null | undefined): Settings {
@@ -43,6 +40,7 @@ export function sanitizeSettings(s: Partial<Settings> | null | undefined): Setti
   out.fov = clamp(out.fov, 60, 100);
   if (!['low', 'medium', 'high'].includes(out.quality)) out.quality = DEFAULT_SETTINGS.quality;
   out.qualityManual = out.qualityManual === true;
-  out.shareAnalytics = out.shareAnalytics !== false;
+  // P0 dev builds stored an opt-out flag here; analytics consent now lives in its own key (pn_analytics_consent_v1).
+  delete (out as Partial<Settings> & { shareAnalytics?: unknown }).shareAnalytics;
   return out;
 }

@@ -4,12 +4,12 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { Analytics } from '../src/platform/analytics';
-import { createRemoteAdapter, privacyPolicyUrl, urlOptOut } from '../src/platform/analyticsConfig';
+import { createAnalyticsService, createRemoteAdapter, isLocalDevelopment, privacyPolicyUrl, urlOptOut } from '../src/platform/analyticsConfig';
 import {
   isValidName, LOCAL_EVENTS, REMOTE_EVENTS, toWireParams, toWireValue,
 } from '../src/platform/analyticsEvents';
 import { AnalyticsService, MAX_PENDING_EVENTS, MAX_REMOTE_EVENTS_PER_SESSION, NoopAnalyticsAdapter, type AnalyticsAdapter } from '../src/platform/analyticsService';
-import { ByteBrewAnalyticsAdapter, type ByteBrewApi } from '../src/platform/bytebrewAdapter';
+import { byteBrewTrackingStopped, ByteBrewAnalyticsAdapter, type ByteBrewApi } from '../src/platform/bytebrewAdapter';
 
 /** In-memory ByteBrew double: records custom events; `initAfter` polls until the session "arrives". */
 function fakeByteBrew(o: { initAfter?: number; throwOnSend?: boolean; neverInit?: boolean } = {}) {
@@ -69,11 +69,32 @@ describe('AnalyticsService', () => {
     expect(s.diagnostics()).toMatchObject({ adapter: 'noop', state: 'unavailable', sent: 0 });
   });
 
-  it('missing ByteBrew keys -> noop adapter, the game keeps tracking locally', () => {
+  it('remote adapter needs keys + https privacy policy URL; ?analytics=0 and VITE_ANALYTICS_ENABLED=false always win', () => {
+    const keys = { VITE_BYTEBREW_WEB_APP_ID: 'x', VITE_BYTEBREW_WEB_SDK_KEY: 'y' };
+    const full = { ...keys, VITE_PRIVACY_POLICY_URL: 'https://example.com/privacy' };
     expect(createRemoteAdapter({}).id).toBe('noop');
     expect(createRemoteAdapter({ VITE_BYTEBREW_WEB_APP_ID: 'x' }).id).toBe('noop');
-    expect(createRemoteAdapter({ VITE_BYTEBREW_WEB_APP_ID: 'x', VITE_BYTEBREW_WEB_SDK_KEY: 'y' }).id).toBe('bytebrew');
-    expect(createRemoteAdapter({ VITE_BYTEBREW_WEB_APP_ID: 'x', VITE_BYTEBREW_WEB_SDK_KEY: 'y', VITE_ANALYTICS_ENABLED: 'false' }).id).toBe('noop');
+    expect(createRemoteAdapter(keys).id).toBe('noop'); // no privacy policy -> no remote analytics
+    expect(createRemoteAdapter(keys).status()).toContain('VITE_PRIVACY_POLICY_URL');
+    expect(createRemoteAdapter({ ...keys, VITE_PRIVACY_POLICY_URL: 'http://example.com/p' }).id).toBe('noop');
+    expect(createRemoteAdapter(full).id).toBe('bytebrew');
+    expect(createRemoteAdapter({ ...full, VITE_ANALYTICS_ENABLED: 'false' }).id).toBe('noop');
+    expect(createRemoteAdapter(full, { killSwitch: true }).id).toBe('noop');
+    expect(createRemoteAdapter(full, { killSwitch: true, localDevelopment: true }).id).toBe('noop');
+    // Only the Vite dev server on localhost may run without a policy URL (never a production build).
+    expect(createRemoteAdapter(keys, { localDevelopment: true }).id).toBe('bytebrew');
+    expect(isLocalDevelopment(true, 'localhost')).toBe(true);
+    expect(isLocalDevelopment(true, '127.0.0.1')).toBe(true);
+    expect(isLocalDevelopment(false, 'localhost')).toBe(false);
+    expect(isLocalDevelopment(true, 'games.crazygames.com')).toBe(false);
+  });
+
+  it('the service created for the game starts disabled (nothing remote before consent)', () => {
+    const s = createAnalyticsService({ env: { VITE_BYTEBREW_WEB_APP_ID: 'x', VITE_BYTEBREW_WEB_SDK_KEY: 'y', VITE_PRIVACY_POLICY_URL: 'https://e.com/p' }, search: '' });
+    expect(s.isEnabled()).toBe(false);
+    expect(s.hasRemote()).toBe(true);
+    expect(createAnalyticsService({ env: {}, search: '' }).hasRemote()).toBe(false);
+    expect(createAnalyticsService({ env: { VITE_BYTEBREW_WEB_APP_ID: 'x', VITE_BYTEBREW_WEB_SDK_KEY: 'y', VITE_PRIVACY_POLICY_URL: 'https://e.com/p' }, search: '?analytics=0' }).hasRemote()).toBe(false);
   });
 
   it('privacy policy link: only absolute https URLs; the notice depends on a real remote destination', () => {
@@ -176,5 +197,21 @@ describe('AnalyticsService', () => {
     const s = new AnalyticsService({ local });
     s.track('first_input');
     expect(local.events()[0].name).toBe('first_input');
+  });
+
+  it('re-consent after a withdrawal clears ByteBrew\'s own stopped flag (bb_tr_on=false) before initialising', async () => {
+    expect(byteBrewTrackingStopped('bb_u_id=a; bb_tr_on=false; x=1')).toBe(true);
+    expect(byteBrewTrackingStopped('bb_tr_on=false')).toBe(true);
+    expect(byteBrewTrackingStopped('bb_tr_on=true')).toBe(false);
+    expect(byteBrewTrackingStopped('xbb_tr_on=false')).toBe(false);
+    expect(byteBrewTrackingStopped(undefined)).toBe(false);
+    const order: string[] = [];
+    const api = fakeByteBrew();
+    const wrapped: ByteBrewApi = { ...api, restartTracking: () => order.push('restart'), initializeByteBrew: (a, k, v) => { order.push('init'); api.initializeByteBrew(a, k, v); } };
+    await new ByteBrewAnalyticsAdapter(cfg, () => Promise.resolve(wrapped), 1000, noSleep, () => true).init();
+    expect(order).toEqual(['restart', 'init']);
+    order.length = 0;
+    await new ByteBrewAnalyticsAdapter(cfg, () => Promise.resolve(wrapped), 1000, noSleep, () => false).init();
+    expect(order).toEqual(['init']);
   });
 });

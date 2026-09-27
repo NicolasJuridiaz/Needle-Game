@@ -7,7 +7,7 @@ import { TOOLS } from '../config/tools';
 import { WORLD } from '../config/world';
 import { AudioEngine } from '../audio/audioEngine';
 import type { LoopId, SfxId } from '../audio/api';
-import { appVersion, privacyPolicyUrl, urlOptOut } from '../platform/analyticsConfig';
+import { appVersion, privacyPolicyUrl } from '../platform/analyticsConfig';
 import type { AnalyticsService } from '../platform/analyticsService';
 import { analyticsPlatform, type PlatformService } from '../platform/platformService';
 import { trackRunProgress } from '../platform/progress';
@@ -40,7 +40,8 @@ import { Hints, type Hint } from './hints';
 import { Input } from './input';
 import { Interaction, type Aim } from './interaction';
 import { PlayerController } from './playerController';
-import { loadProfile, saveProfile, type PlayerProfile } from './profile';
+import { AnalyticsConsentController, initialProfile, type ConsentSource, type ConsentView } from './analyticsConsent';
+import type { PlayerProfile } from './profile';
 import { SaveManager, type GameMeta } from './saveManager';
 import { GameTelemetry } from './telemetry';
 import { welcomeBackInfo, type WelcomeBackInfo } from './welcomeBack';
@@ -100,7 +101,7 @@ export class Game implements UIContext {
   private readonly telemetry: GameTelemetry;
   /** Welcome Back card data (null = not shown); cleared when the player clicks in. */
   private welcome: WelcomeBackInfo | null = null;
-  private readonly analyticsOptOut: boolean;
+  private readonly consent: AnalyticsConsentController;
 
   private mode: GameMode = 'loading';
   private readonly fixed: FixedStepState = { accumulator: 0 };
@@ -144,10 +145,9 @@ export class Game implements UIContext {
   ) {
     this.saves = new SaveManager(platform.storage);
     this.settings = this.saves.loadSettings();
-    // Analytics opt-out: Settings > Privacy, or ?analytics=0 for this page load. Enabling starts the remote adapter.
-    this.analyticsOptOut = urlOptOut(typeof location === 'undefined' ? '' : location.search);
-    analytics.setEnabled(this.settings.shareAnalytics && !this.analyticsOptOut);
-    this.profile = loadProfile(platform.storage, Date.now());
+    // Analytics is OPT-IN (src/game/analyticsConsent.ts): the service stays disabled (ByteBrew never loaded) until the
+    // player allows it. The analytics profile is only read/persisted with consent; otherwise it lives in memory.
+    this.profile = initialProfile(platform.storage, Date.now());
     this.telemetry = new GameTelemetry({
       analytics, profile: this.profile, version: appVersion(), platform: () => analyticsPlatform(platform),
       perf: () => { const r = this.renderer.stats(); return { quality: this.settings.quality, drawCalls: r.drawCalls, triangles: r.triangles, deviceClass: platform.deviceClass }; },
@@ -168,6 +168,11 @@ export class Game implements UIContext {
     platform.onMuteChange((m) => this.audio.setPlatformMuted(m));
     this.actions = this.makeActions();
 
+    this.consent = new AnalyticsConsentController({
+      storage: platform.storage, analytics, telemetry: this.telemetry, profile: this.profile,
+      onWithdrawn: () => { this.meta.telemetry = undefined; this.saveGame(true); },
+    });
+    this.consent.start();
     const hadSave = this.saves.hasSave();
     const loaded = this.saves.load();
     this.telemetry.sessionStart({ hasSave: hadSave, activeRun: !!loaded && !loaded.sim.completed, saveVersion: this.saves.loadedSaveVersion });
@@ -178,7 +183,7 @@ export class Game implements UIContext {
       this.welcome = welcomeBackInfo(loaded.sim, this.saves.lastSavedAt, Date.now());
       if (this.welcome) this.telemetry.onWelcomeBack(this.welcome);
     } else this.bindSim(new Sim(this.newSeed()), true);
-    saveProfile(platform.storage, this.profile);
+    this.consent.persistProfile();
     this.installErrorTelemetry();
 
     this.renderer.domElement.addEventListener('click', () => {
@@ -666,11 +671,12 @@ export class Game implements UIContext {
   saveGame(auto: boolean): void {
     if (!this.sim || this.mode === 'loading') return;
     this.meta.hintsDone = this.hints?.doneIds() ?? this.meta.hintsDone;
-    this.meta.telemetry = this.telemetry.state();
+    // Analytics run state (run id, sent milestones) is stored with the save only while consent is granted.
+    this.meta.telemetry = this.consent?.telemetryForSave();
     if (this.saves.save(this.sim, this.meta)) this.sim.events.emit('game:saved', { auto });
     else this.telemetry.error('save_failed', 'save', true);
     this.telemetry.touch();
-    saveProfile(this.platform.storage, this.profile);
+    this.consent?.persistProfile();
   }
 
   private quitState(): Record<string, string | number> {
@@ -697,8 +703,8 @@ export class Game implements UIContext {
   getHint(): { text: string; key?: string } | null { return this.hint ? { text: this.hint.text, key: this.hint.key } : null; }
   isTouchOnly(): boolean { return this.platform.isTouchOnlyDevice(); }
   getWelcomeBack(): WelcomeBackInfo | null { return this.welcome; }
-  getPrivacyNotice(): { policyUrl: string | null } | null {
-    return this.analytics.hasRemote() && this.analytics.isEnabled() ? { policyUrl: privacyPolicyUrl() } : null;
+  getAnalyticsConsent(): ConsentView & { policyUrl: string | null } {
+    return { ...this.consent.view(), policyUrl: privacyPolicyUrl() };
   }
   /** Settings panel: the selected quality only fully applies after a reload (anti-aliasing). */
   graphicsReloadRequired(): boolean { return this.renderer.needsReloadFor(this.settings.quality); }
@@ -731,7 +737,7 @@ export class Game implements UIContext {
         this.meta = { hintsDone: this.hints?.doneIds() ?? [], continuedAfterCompletion: false };
         this.welcome = null;
         this.bindSim(new Sim(this.newSeed()), true);
-        saveProfile(this.platform.storage, this.profile);
+        this.consent.persistProfile();
         this.setMode('clickToPlay');
       },
       continueAfterCompletion: () => { this.meta.continuedAfterCompletion = true; this.backToPlay(false); },
@@ -743,6 +749,10 @@ export class Game implements UIContext {
         b?.setMode?.(mode, filter);
       },
       playUiSound: (id) => this.audio.play(id),
+      setAnalyticsConsent: (allow: boolean, source: ConsentSource) => {
+        if (allow) this.consent.grant(source);
+        else this.consent.deny();
+      },
     };
   }
 
@@ -774,7 +784,6 @@ export class Game implements UIContext {
       this.particles.setQuality(q);
       this.wires.setQuality(q);
     }
-    if (patch.shareAnalytics !== undefined) this.analytics.setEnabled(this.settings.shareAnalytics && !this.analyticsOptOut);
     this.saves.saveSettings(this.settings);
   }
 

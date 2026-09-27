@@ -2,6 +2,7 @@ import { NEEDLE_COUNT } from '../config/needles';
 import type { GameMode } from './context';
 import { ClassSlot, h, TextSlot } from './dom';
 import type { WelcomeBackInfo } from '../game/welcomeBack';
+import type { AnalyticsConsentView } from './context';
 import { fmtClock, fmtDuration, fmtMoney, fmtRate } from './format';
 import { icon } from './icons';
 import { keycapHTML, type PartEnv, type UIPart } from './part';
@@ -19,8 +20,8 @@ export class ClickToPlay implements UIPart {
   private cta: HTMLElement | null = null;
   private welcomeEl: HTMLElement | null = null;
   private welcomeShown: WelcomeBackInfo | null = null;
-  private privacyEl: HTMLElement | null = null;
-  private privacyShown: string | null = null;
+  private consentEl: HTMLElement | null = null;
+  private consentShown: string | null = null;
 
   constructor(private readonly env: PartEnv, parent: HTMLElement) {
     const ctx = env.ctx;
@@ -57,7 +58,7 @@ export class ClickToPlay implements UIPart {
       `<span>${keycapHTML('KeyQ', L)} Build</span>`,
       `<span>${keycapHTML('Escape', L)} Pause</span>`,
     ].join('');
-    this.privacyEl = h('div', 'pn-ctp-privacy', el);
+    this.consentEl = h('div', 'pn-consent', el);
   }
 
   update(_dt: number, mode: GameMode): void {
@@ -66,26 +67,44 @@ export class ClickToPlay implements UIPart {
     const wb = this.env.ctx.getWelcomeBack?.() ?? null;
     this.renderWelcome(wb);
     if (!on) return;
-    this.renderPrivacy(this.env.ctx.getPrivacyNotice?.() ?? null);
+    this.renderConsent(this.env.ctx.getAnalyticsConsent?.() ?? null);
     const sim = this.env.ctx.sim;
     const found = sim.progress.needlesFound.length;
     this.resume.set(!wb && sim.time > 1 ? `Welcome back!  ${fmtClock(sim.time)} played  -  ${found}/${NEEDLE_COUNT} needles found` : '');
   }
 
-  /** Non-blocking analytics notice (only when statistics are actually sent). */
-  private renderPrivacy(n: { policyUrl: string | null } | null): void {
-    const key = n ? `on:${n.policyUrl ?? ''}` : 'off';
-    if (key === this.privacyShown || !this.privacyEl) return;
-    this.privacyShown = key;
-    if (!n) { this.privacyEl.replaceChildren(); return; }
-    this.privacyEl.textContent = 'This game collects anonymous gameplay statistics to improve it. You can turn this off in Settings (Esc). ';
-    if (n.policyUrl) {
+  /**
+   * Opt-in analytics card (CrazyGames "User Consent"): compact, top-right, two equally prominent choices, never
+   * blocks playing (clicking the game starts it with analytics off). Shown only while no choice has been made.
+   */
+  private renderConsent(c: AnalyticsConsentView | null): void {
+    const show = !!c?.prompt;
+    const key = show ? `on:${c!.policyUrl ?? ''}` : 'off';
+    if (key === this.consentShown || !this.consentEl) return;
+    this.consentShown = key;
+    this.consentEl.classList.toggle('is-on', show);
+    this.consentEl.replaceChildren();
+    if (!show) return;
+    h('div', 'pn-consent-title', this.consentEl, 'Help improve Project Needle?');
+    const p = h('div', 'pn-consent-text', this.consentEl,
+      'With your permission we record anonymous gameplay statistics (progress, purchases, performance) with ByteBrew to see how the game is played. Nothing is sent unless you allow it. ');
+    if (c!.policyUrl) {
       const a = document.createElement('a');
-      a.href = n.policyUrl;
+      a.href = c!.policyUrl;
       a.target = '_blank';
       a.rel = 'noopener noreferrer';
       a.textContent = 'Privacy policy';
-      this.privacyEl.appendChild(a);
+      p.appendChild(a);
+    }
+    const row = h('div', 'pn-consent-actions', this.consentEl);
+    const choose = (allow: boolean) => {
+      this.env.sound('uiClick');
+      this.env.ctx.actions.setAnalyticsConsent?.(allow, 'prompt');
+    };
+    for (const [label, allow] of [['Allow analytics', true], ['Continue without analytics', false]] as const) {
+      const b = h('button', 'pn-consent-btn', row, label);
+      b.type = 'button';
+      b.addEventListener('click', (e) => { e.stopPropagation(); choose(allow); });
     }
   }
 

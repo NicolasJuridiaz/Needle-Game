@@ -16,9 +16,9 @@ async function boot(): Promise<void> {
   platform.loadingStart();
   setBar(0.4);
 
-  // Analytics: remote adapter (ByteBrew) only when configured; the Game applies the player's opt-out and that
-  // starts the adapter in the background (it never blocks the boot).
-  const analytics = createAnalyticsService({ enabled: false });
+  // Analytics: starts disabled. The Game's consent controller enables it only after the player allows it (opt-in);
+  // ByteBrew is then loaded and initialised in the background (never blocks the boot).
+  const analytics = createAnalyticsService();
   const container = document.getElementById('game')!;
   const uiRoot = document.getElementById('ui')!;
 
