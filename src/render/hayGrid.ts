@@ -53,26 +53,22 @@ export function gridNormal(y: Float32Array, stride: number, cols: number, rows: 
   out[o] = nx; out[o + 1] = ny; out[o + 2] = nz;
 }
 
+/** Number of flat straw tones in the stylised hay palette (0 = darkest, HAY_TONES - 1 = palest). */
+export const HAY_TONES = 4;
+
 /**
- * Vertex tone (RGB multipliers around 1) for the straw texture:
- *  - crevices (surface below the neighbour average) darker and warmer,
- *  - crests and the upper pile lighter (sun-bleached),
- *  - thin loose hay on the floor slightly dusty,
- *  - `patch` (0..1) adds large soft colour patches.
+ * Palette tone (0..HAY_TONES-1) of a hay vertex for the flat low-poly look:
+ *  - crevices (surface below the neighbour average) and thin floor hay take the darker golds,
+ *  - crests and the upper pile the pale straw,
+ *  - `patch` (0..1, large soft field) and `jitter` (0..1, per vertex) break it into irregular facet patches.
  */
-export function hayTone(h: number, cavity: number, patch: number, pileHeight: number, out: Float32Array, o: number): void {
+export function hayToneIndex(h: number, cavity: number, patch: number, jitter: number, pileHeight: number): number {
   const up = Math.min(1, Math.max(0, h / Math.max(0.1, pileHeight)));
-  // cavity > 0: vertex sits below its neighbours (a crease); < 0: crest.
   const crease = Math.min(1, Math.max(0, cavity * 3.2));
   const crest = Math.min(1, Math.max(0, -cavity * 3.2));
   const thin = h < 0.3 ? 1 - Math.max(0, h) / 0.3 : 0;
-  let l = 0.9 + 0.13 * up + 0.1 * crest - 0.3 * crease - 0.07 * thin;
-  l *= 0.9 + 0.17 * patch;
-  // Warm deep tone in creases, pale gold on crests.
-  const r = l * (1.0 + 0.02 * crest);
-  const g = l * (0.97 - 0.07 * crease + 0.02 * up);
-  const b = l * (0.9 - 0.2 * crease + 0.06 * crest - 0.05 * thin + 0.04 * up);
-  out[o] = r; out[o + 1] = g; out[o + 2] = b;
+  const t = 0.18 + 0.42 * patch + 0.3 * jitter + 0.2 * up + 0.25 * crest - 0.55 * crease - 0.25 * thin;
+  return Math.max(0, Math.min(HAY_TONES - 1, Math.floor(t * HAY_TONES)));
 }
 
 /**

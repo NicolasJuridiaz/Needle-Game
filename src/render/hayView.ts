@@ -2,10 +2,9 @@ import * as THREE from 'three';
 import { WORLD } from '../config/world';
 import type { IHayField } from '../sim/interfaces';
 import {
-  TUFT_MIN_HEIGHT, TuftSlots, displayHeight, gridNormal, hash01, hayTone, patchTone,
+  HAY_TONES, TUFT_MIN_HEIGHT, TuftSlots, displayHeight, gridNormal, hash01, hayToneIndex, patchTone,
 } from './hayGrid';
 import { qualityProfile, type Quality } from './quality';
-import { HAY_TEXTURE_METRES, hayTextures, tuftTexture } from './textures';
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -16,9 +15,17 @@ const _n = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 const _c = new THREE.Color();
 
-/** Tuft billboard height (m) before per-instance scale. */
-const TUFT_HEIGHT = 0.42;
-const TUFT_WIDTH = 0.5;
+/**
+ * Stylised straw palette (sRGB), darkest → palest. Flat colours, no texture: the pile reads as a big faceted
+ * low-poly mound; lighting on the flat-shaded facets does the rest.
+ */
+const HAY_PALETTE = [0xa06a22, 0xbf8b34, 0xd6a847, 0xe6c165].map((h) => new THREE.Color(h));
+/** Straw clump size (m) before per-instance scale. */
+const CLUMP_RADIUS = 0.26;
+const CLUMP_HEIGHT = 0.12;
+/** Cosmetic surface jitter: horizontal (fraction of a hay cell) and vertical (m, only on hay deeper than 0.25 m). */
+const JITTER_XZ = 0.22;
+const JITTER_Y = 0.07;
 
 /**
  * Hay heightfield view: one mesh with a vertex per hay cell centre (positions/normals/colours rewritten only
@@ -45,6 +52,9 @@ export class HayView {
   private applied = new Float32Array(0);
   /** Static per-vertex colour patch value (0..1). */
   private patch = new Float32Array(0);
+  /** Static per-vertex vertical facet jitter (m) and tone jitter (0..1). */
+  private jitterY = new Float32Array(0);
+  private jitterT = new Float32Array(0);
   /** Cells needing normal/colour/tuft refresh (pass 2). */
   private marks = new Uint8Array(0);
 
@@ -60,28 +70,22 @@ export class HayView {
     this.scene = scene;
     this.hay = hay;
     this.quality = quality;
-    const tex = hayTextures();
+    // Flat-shaded facets + palette vertex colours: no photographic texture, no normal map.
     this.material = new THREE.MeshStandardMaterial({
-      map: tex.map,
-      normalMap: tex.normalMap,
-      normalScale: new THREE.Vector2(0.85, 0.85),
       vertexColors: true,
-      roughness: 0.93,
+      flatShading: true,
+      roughness: 0.96,
       metalness: 0,
-      envMapIntensity: 0.6,
+      envMapIntensity: 0.55,
     });
-    this.tuftGeometry = createTuftGeometry();
+    this.tuftGeometry = createClumpGeometry();
     this.tuftMaterial = new THREE.MeshStandardMaterial({
-      map: tuftTexture(),
-      alphaTest: 0.42,
-      // Both windings are in the geometry (sharing the up-facing normals); DoubleSide would flip the
-      // normal on back faces and light every tuft seen from behind as if it faced the floor.
-      side: THREE.FrontSide,
-      roughness: 0.9,
+      vertexColors: true,
+      flatShading: true,
+      roughness: 0.95,
       metalness: 0,
       envMapIntensity: 0.5,
     });
-    this.applyTextureQuality();
     this.build();
   }
 
@@ -100,11 +104,10 @@ export class HayView {
     this.apply(rect.c0, rect.r0, rect.c1 + 1, rect.r1 + 1);
   }
 
-  /** Live: rebuilds the tuft pool for the new budget and re-filters the hay textures. */
+  /** Live: rebuilds the straw clump pool for the new budget. */
   setQuality(q: Quality): void {
     if (q === this.quality) return;
     this.quality = q;
-    this.applyTextureQuality();
     this.buildTufts();
     if (this.mesh) this.refreshAllTufts();
   }
@@ -112,14 +115,6 @@ export class HayView {
   /** Live tuft instances / pool capacity (QA). */
   get tuftStats(): { live: number; capacity: number } {
     return { live: this.tufts?.count ?? 0, capacity: this.slots?.capacity ?? 0 };
-  }
-
-  /** Anisotropic filtering of the (shared) hay textures: the pile is mostly seen at grazing angles. */
-  private applyTextureQuality(): void {
-    const a = qualityProfile(this.quality).anisotropy;
-    for (const t of [this.material.map, this.material.normalMap]) {
-      if (t && t.anisotropy !== a) { t.anisotropy = a; t.needsUpdate = true; }
-    }
   }
 
   dispose(): void {
@@ -150,22 +145,24 @@ export class HayView {
     this.colors = new Float32Array(n * 3);
     this.applied = new Float32Array(n);
     this.patch = new Float32Array(n);
+    this.jitterY = new Float32Array(n);
+    this.jitterT = new Float32Array(n);
     this.marks = new Uint8Array(n);
-    const uv = new Float32Array(n * 2);
     const h = hay.heights;
-    const k = 1 / HAY_TEXTURE_METRES;
     for (let r = 0; r < rows; r++) {
       const z = hay.originZ + (r + 0.5) * cs;
       for (let c = 0; c < cols; c++) {
         const i = r * cols + c;
         const x = hay.originX + (c + 0.5) * cs;
-        this.positions[i * 3] = x;
-        this.positions[i * 3 + 1] = displayHeight(h[i]);
-        this.positions[i * 3 + 2] = z;
+        // Jittered vertex positions break the regular grid into irregular low-poly facets (cosmetic only:
+        // the sim heightfield is untouched, the offset stays well inside the vertex's own cell).
+        this.positions[i * 3] = x + (hash01(i, 11) - 0.5) * 2 * JITTER_XZ * cs;
+        this.positions[i * 3 + 2] = z + (hash01(i, 12) - 0.5) * 2 * JITTER_XZ * cs;
+        this.jitterY[i] = (hash01(i, 13) - 0.5) * 2 * JITTER_Y;
+        this.jitterT[i] = hash01(i, 14);
+        this.positions[i * 3 + 1] = this.surfaceY(i, h[i]);
         this.applied[i] = h[i];
-        uv[i * 2] = x * k;
-        uv[i * 2 + 1] = -z * k;
-        this.patch[i] = 0.65 * patchTone(x, z, 3.2, 17) + 0.35 * patchTone(x, z, 0.9, 29);
+        this.patch[i] = 0.7 * patchTone(x, z, 3.6, 17) + 0.3 * patchTone(x, z, 1.3, 29);
       }
     }
     const quads = (cols - 1) * (rows - 1);
@@ -188,7 +185,6 @@ export class HayView {
     g.setAttribute('position', pos);
     g.setAttribute('normal', nor);
     g.setAttribute('color', col);
-    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setIndex(new THREE.BufferAttribute(index, 1));
     this.dynamicAttributes = [pos, nor, col];
     // Static bounds covering every height the pile can reach (avoids recomputing on edits).
@@ -223,7 +219,8 @@ export class HayView {
     const prof = qualityProfile(this.quality);
     const cap = prof.tufts;
     this.slots = new TuftSlots(this.cols * this.rows, prof.tuftsPerCell, cap);
-    this.tuftProbability = Math.min(1, prof.tuftDensity / prof.tuftsPerCell);
+    // Clumps are bigger than the old straw cards: ~60 % of the profile density covers the surface as well.
+    this.tuftProbability = Math.min(1, (prof.tuftDensity * 0.6) / prof.tuftsPerCell);
     const mesh = new THREE.InstancedMesh(this.tuftGeometry, this.tuftMaterial, cap);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3).setUsage(THREE.DynamicDrawUsage);
@@ -262,7 +259,7 @@ export class HayView {
         const v = h[i];
         if (v === applied[i]) continue;
         applied[i] = v;
-        pos[i * 3 + 1] = displayHeight(v);
+        pos[i * 3 + 1] = this.surfaceY(i, v);
         const ca = c > 0 ? c - 1 : 0, cb = c < cols - 1 ? c + 1 : c;
         const ra = r > 0 ? r - 1 : 0, rb = r < rows - 1 ? r + 1 : r;
         for (let rr = ra; rr <= rb; rr++) for (let cc = ca; cc <= cb; cc++) marks[rr * cols + cc] = 1;
@@ -305,7 +302,15 @@ export class HayView {
     const yu = pos[((r > 0 ? r - 1 : r) * cols + c) * 3 + 1];
     const yd = pos[((r < rows - 1 ? r + 1 : r) * cols + c) * 3 + 1];
     const cavity = (yl + yr + yu + yd) * 0.25 - y;
-    hayTone(this.applied[i], cavity, this.patch[i], WORLD.pile.height, this.colors, i * 3);
+    const t = hayToneIndex(this.applied[i], cavity, this.patch[i], this.jitterT[i], WORLD.pile.height);
+    const col = HAY_PALETTE[t];
+    this.colors[i * 3] = col.r; this.colors[i * 3 + 1] = col.g; this.colors[i * 3 + 2] = col.b;
+  }
+
+  /** Display height of vertex i: the sim height (or sunk under the floor) + a small facet jitter on deep hay. */
+  private surfaceY(i: number, h: number): number {
+    const y = displayHeight(h);
+    return h > 0.25 ? y + this.jitterY[i] * Math.min(1, (h - 0.25) * 4) : y;
   }
 
   /** Bilinear display height between vertex centres at world (x, z). */
@@ -360,10 +365,10 @@ export class HayView {
       _s.set(sc, sc * (0.85 + hash01(slot, 6) * 0.35), sc);
       _m.compose(_p, _q, _s);
       mesh.setMatrixAt(idx, _m);
-      const l = 0.78 + hash01(slot, 7) * 0.38;
-      const warm = hash01(slot, 8);
-      _c.setRGB(l * (1.0 + warm * 0.04), l * (0.95 + warm * 0.02), l * (0.84 - warm * 0.1));
-      mesh.setColorAt(idx, _c);
+      // palette tone of the underlying surface, sometimes one step lighter (never the darkest crease tone)
+      const base = hayToneIndex(h, 0, this.patch[i], this.jitterT[i], WORLD.pile.height);
+      const t = Math.max(1, Math.min(HAY_TONES - 1, base + (hash01(slot, 7) < 0.3 ? 1 : 0)));
+      mesh.setColorAt(idx, _c.copy(HAY_PALETTE[t]));
       this.touchTuft(idx);
     }
   }
@@ -402,37 +407,36 @@ export class HayView {
 }
 
 /**
- * Three crossed vertical quads (60° apart), base at y = 0. Normals lean strongly upwards so the tufts
- * shade like the hay surface they grow from instead of like flat cards.
+ * Low-poly straw clump, base at y = 0 (sits half sunk in the surface): an irregular six-sided lump with a twisted
+ * shoulder ring and an off-centre crown. 18 triangles, flat shaded, no texture; the per-instance palette tone
+ * colours it (the shoulder faces are a touch lighter so each clump reads as a tuft, not a pyramid).
  */
-function createTuftGeometry(): THREE.BufferGeometry {
-  const quads = 3;
-  const pos = new Float32Array(quads * 4 * 3);
-  const nor = new Float32Array(quads * 4 * 3);
-  const uv = new Float32Array(quads * 4 * 2);
-  const idx: number[] = [];
-  const hw = TUFT_WIDTH / 2, ht = TUFT_HEIGHT;
-  for (let q = 0; q < quads; q++) {
-    const a = (q / quads) * Math.PI;
-    const dx = Math.cos(a) * hw, dz = Math.sin(a) * hw;
-    const nx = -Math.sin(a) * 0.35, nz = Math.cos(a) * 0.35;
-    const inv = 1 / Math.hypot(nx, 1, nz);
-    const corners = [[-dx, 0, -dz, 0, 0], [dx, 0, dz, 1, 0], [dx, ht, dz, 1, 1], [-dx, ht, -dz, 0, 1]];
-    for (let k = 0; k < 4; k++) {
-      const v = q * 4 + k;
-      pos[v * 3] = corners[k][0]; pos[v * 3 + 1] = corners[k][1]; pos[v * 3 + 2] = corners[k][2];
-      nor[v * 3] = nx * inv; nor[v * 3 + 1] = inv; nor[v * 3 + 2] = nz * inv;
-      uv[v * 2] = corners[k][3]; uv[v * 2 + 1] = corners[k][4];
-    }
-    const b = q * 4;
-    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
-    idx.push(b, b + 2, b + 1, b, b + 3, b + 2);
+function createClumpGeometry(): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const col: number[] = [];
+  const tri = (a: number[], b: number[], c: number[], l: number) => {
+    pos.push(...a, ...b, ...c);
+    for (let k = 0; k < 3; k++) col.push(l, l, l);
+  };
+  const R = CLUMP_RADIUS, H = CLUMP_HEIGHT;
+  const base: number[][] = [], mid: number[][] = [];
+  const rb = [1, 0.78, 1.1, 0.86, 1.04, 0.8], rm = [0.62, 0.5, 0.66, 0.48, 0.58, 0.54], hm = [0.62, 0.7, 0.55, 0.74, 0.6, 0.68];
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2, am = a + Math.PI / 6;
+    base.push([Math.cos(a) * R * rb[k], 0, Math.sin(a) * R * rb[k]]);
+    mid.push([Math.cos(am) * R * rm[k], H * hm[k], Math.sin(am) * R * rm[k]]);
+  }
+  const top = [R * 0.12, H, -R * 0.08];
+  for (let k = 0; k < 6; k++) {
+    const n = (k + 1) % 6;
+    tri(base[k], mid[k], base[n], 0.94);
+    tri(base[n], mid[k], mid[n], 1.02);
+    tri(mid[k], top, mid[n], 1.1);
   }
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  g.setIndex(idx);
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
   g.computeBoundingSphere();
   return g;
 }

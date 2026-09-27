@@ -14,8 +14,9 @@ import { flipFaces, Parts, shade } from './parts';
 
 type State = Parameters<ToolViewModel['update']>[2];
 
-const LEATHER = 0xc9964f;
-const CUFF = 0x8a5a33;
+const SKIN = 0xc98559;
+const NAIL = 0xdca483;
+const CUFF = 0x2f4f73;
 const SLEEVE = 0x3b5f86;
 const WOOD = 0x9a6a3c;
 
@@ -36,18 +37,54 @@ class Kit {
   dispose(): void { for (const g of this.geos) g.dispose(); for (const m of this.mats) m.dispose(); }
 }
 
+/** Hand pose: `grip` closes around a handle running along local X; `open` is a relaxed, half-curled hand. */
+type HandPose = 'grip' | 'open';
+
 /**
- * Work glove closed around a handle running along local X through the origin; the sleeve leaves towards
- * +Z (the camera) and slightly down.
+ * Stylized low-poly bare hand (flat palm, separate thumb, four two-segment fingers, knuckle nubs) + a short
+ * forearm and shirt cuff. Frame: the handle (grip) runs along local X through the origin, fingers point to
+ * -Z and curl down (-Y), the back of the hand faces +Y and the forearm leaves towards +Z (the camera).
+ * `left` mirrors it on X (the thumb is always on the inner side).
  */
-function glove(p: Parts, left = false): void {
-  const s = left ? -1 : 1;
-  p.round('matte', [0.1, 0.085, 0.085], 0.028, LEATHER, { pos: [0, 0.005, 0.005] });
-  for (let k = 0; k < 4; k++) p.round('matte', [0.022, 0.034, 0.032], 0.01, shade(LEATHER, 0.92), { pos: [-0.036 + k * 0.024, 0.02, -0.042] });
-  p.round('matte', [0.03, 0.028, 0.065], 0.012, LEATHER, { pos: [s * 0.05, 0.04, -0.012], rot: [0.2, s * 0.5, 0] });
-  p.round('matte', [0.07, 0.012, 0.02], 0.005, shade(LEATHER, 0.8), { pos: [0, 0.048, 0.03] });
-  p.cyl('matte', 0.048, 0.044, 0.07, CUFF, { pos: [0, -0.012, 0.075] }, 10, 'z');
-  p.cyl('matte', 0.058, 0.062, 0.34, SLEEVE, { pos: [0, -0.03, 0.27], rot: [0.12, 0, 0] }, 10, 'z');
+function glove(p: Parts, left = false, pose: HandPose = 'grip'): void {
+  const s = left ? 1 : -1; // thumb side (towards the body centre)
+  const grip = pose === 'grip';
+  const py = grip ? 0.034 : 0; // palm centre height (the handle sits under the palm when gripping)
+  // palm: slightly tapered block, a bit wider at the knuckles
+  p.round('matte', [0.084, 0.026, 0.078], 0.011, SKIN, { pos: [0, py, 0.002] }, 1);
+  p.round('matte', [0.03, 0.024, 0.05], 0.01, shade(SKIN, 0.96), { pos: [s * 0.03, py - 0.004, 0.018], rot: [0, s * 0.25, 0] }, 1);
+  // four fingers: index on the thumb side; middle finger longest
+  const lens = [0.04, 0.044, 0.041, 0.033];
+  const curl = grip ? [1.35, 1.4, 1.42, 1.45] : [0.22, 0.28, 0.34, 0.42];
+  for (let k = 0; k < 4; k++) {
+    const x = s * (0.03 - k * 0.02);
+    const r = k === 3 ? 0.0078 : 0.0088;
+    const L = lens[k];
+    const a0: [number, number, number] = [x, py + 0.002, -0.036];
+    // proximal segment bends down by curl/2, the distal one by the full curl
+    const b1 = curl[k] * 0.5, b2 = curl[k] * (grip ? 1.2 : 1);
+    const l1 = L * 0.55, l2 = L * 0.5;
+    const a1: [number, number, number] = [x, a0[1] - Math.sin(b1) * l1, a0[2] - Math.cos(b1) * l1];
+    const a2: [number, number, number] = [x, a1[1] - Math.sin(b2) * l2, a1[2] - Math.cos(b2) * l2];
+    p.sphere('matte', r * 1.12, shade(SKIN, 0.97), { pos: a0 }, 6, 4);
+    p.rod('matte', a0, a1, r, SKIN, 5);
+    p.sphere('matte', r * 1.02, SKIN, { pos: a1 }, 6, 4);
+    p.rod('matte', a1, a2, r * 0.92, SKIN, 5);
+    p.sphere('matte', r * 0.92, NAIL, { pos: a2 }, 6, 4);
+  }
+  // thumb: leaves the palm side at the heel, angles forward and inwards (under the handle when gripping)
+  const t0: [number, number, number] = [s * 0.04, py - 0.006, 0.016];
+  const t1: [number, number, number] = grip ? [s * 0.052, py - 0.03, -0.012] : [s * 0.064, py - 0.012, -0.018];
+  const t2: [number, number, number] = grip ? [s * 0.03, py - 0.05, -0.03] : [s * 0.058, py - 0.02, -0.05];
+  p.sphere('matte', 0.0125, SKIN, { pos: t0 }, 6, 4);
+  p.rod('matte', t0, t1, 0.0112, SKIN, 5);
+  p.sphere('matte', 0.0105, SKIN, { pos: t1 }, 6, 4);
+  p.rod('matte', t1, t2, 0.0098, SKIN, 5);
+  p.sphere('matte', 0.0098, NAIL, { pos: t2 }, 6, 4);
+  // wrist, forearm and a short shirt cuff (kept short so it never fills the bottom of the screen)
+  p.rod('matte', [0, py - 0.002, 0.036], [0, py - 0.006, 0.12], 0.026, SKIN, 7);
+  p.cyl('matte', 0.036, 0.034, 0.04, CUFF, { pos: [0, py - 0.008, 0.13] }, 8, 'z');
+  p.cyl('matte', 0.04, 0.043, 0.16, SLEEVE, { pos: [0, py - 0.012, 0.23] }, 8, 'z');
 }
 
 const _gx = new THREE.Vector3();
@@ -67,7 +104,12 @@ function orientGlove(o: THREE.Object3D, handle: [number, number, number], sleeve
   o.quaternion.setFromRotationMatrix(_gm);
 }
 
-function hayGeo(round = false): THREE.BufferGeometry { return hayMound(1, 1, 0.55, 5, 91, round); }
+/** Carried hay: a coarse faceted mound (flat normals), same flat straw look as the low-poly pile. */
+function hayGeo(round = false): THREE.BufferGeometry {
+  const g = hayMound(1, 1, 0.55, 4, 91, round).toNonIndexed();
+  g.computeVertexNormals();
+  return g;
+}
 
 abstract class BaseVM implements ToolViewModel {
   readonly root = new THREE.Group();
@@ -105,30 +147,46 @@ function setLoad(o: THREE.Object3D, load: number, base: THREE.Vector3): void {
 class HandsVM extends BaseVM {
   private readonly hands: THREE.Group[] = [];
   private readonly hay: THREE.Object3D;
-  private readonly hayBase = new THREE.Vector3(0.26, 0.16, 0.22);
+  private readonly hayBase = new THREE.Vector3(0.24, 0.15, 0.2);
+  /** Smoothed "holding something" (0..1) and the short push played when the load is dropped. */
+  private hold = 0;
+  private drop = 0;
+  private lastLoad = 0;
   constructor() {
     super('hands');
     for (const left of [false, true]) {
       const p = new Parts();
-      glove(p, left);
+      glove(p, left, 'open');
       const g = this.kit.mesh(p, this.sway, left ? 'leftHand' : 'rightHand');
       this.hands.push(g);
     }
     const hp = new Parts();
-    hp.add('decal', hayGeo(true), 0xffffff);
-    hp.sphere('matte', 0.35, C.hay, { pos: [0, 0.05, 0], scale: [1, 0.5, 1] }, 8, 5);
+    hp.add('matte', hayGeo(true), C.hay);
+    hp.sphere('matte', 0.35, shade(C.hay, 0.9), { pos: [0, 0.05, 0], scale: [1, 0.5, 1] }, 7, 4);
     this.hay = this.kit.mesh(hp, this.sway, 'hay');
   }
-  protected animate(_dt: number, _time: number, s: State): void {
+  protected animate(dt: number, time: number, s: State): void {
     const a = Math.sin(Math.PI * Math.max(0, Math.min(1, s.action)));
+    const load = s.load;
+    if (this.lastLoad > 0.02 && load <= 0.02) this.drop = 1;
+    this.lastLoad = load;
+    this.drop = Math.max(0, this.drop - dt * 3.2);
+    const want = load > 0.02 ? 1 : 0;
+    this.hold += (want - this.hold) * Math.min(1, dt * 9);
+    const h = this.hold, d = Math.sin(Math.PI * this.drop);
+    const breathe = Math.sin(time * 1.7) * 0.004;
     for (let i = 0; i < 2; i++) {
       const side = i === 0 ? 1 : -1;
-      const h = this.hands[i];
-      h.position.set(side * (0.16 - a * 0.05), -0.2 - a * 0.05, -0.42 - a * 0.13);
-      h.rotation.set(-0.25 + a * 0.5, side * (0.45 + a * 0.2), side * (0.35 - a * 0.2));
+      const g = this.hands[i];
+      // idle: low at the sides, palms down/in; grab: reach forward and down; hold: close in under the load
+      const x = side * (0.19 - h * 0.035 - a * 0.04);
+      const y = -0.19 + breathe - a * 0.05 - h * 0.015 + d * 0.03;
+      const z = -0.37 - a * 0.14 - h * 0.05 - d * 0.1;
+      g.position.set(x, y, z);
+      g.rotation.set(-0.12 + a * 0.35 - h * 0.1, side * (0.3 + a * 0.12 - h * 0.12), -side * (0.5 + h * 0.6 - a * 0.2));
     }
-    this.hay.position.set(0, -0.2 - a * 0.04, -0.47 - a * 0.13);
-    setLoad(this.hay, s.load, this.hayBase);
+    this.hay.position.set(0, -0.2 - a * 0.04 + d * 0.03, -0.45 - a * 0.13 - d * 0.1);
+    setLoad(this.hay, load, this.hayBase);
   }
 }
 
@@ -176,7 +234,7 @@ class LongToolVM extends BaseVM {
     orientGlove(left, [0, 0, -1], [-0.8, -0.5, 0.1]);
     this.kit.mesh(p, this.tool, kind);
     const hp = new Parts();
-    hp.add('decal', hayGeo(), 0xffffff);
+    hp.add('matte', hayGeo(), C.hay);
     const hay = this.kit.mesh(hp, this.tool, 'hay');
     hay.position.set(0, 0.0, tip - 0.22);
     this.hay = hay;
@@ -217,7 +275,7 @@ class BucketVM extends BaseVM {
     g.position.set(0, H + rT + 0.01, 0);
     orientGlove(g, [1, 0, 0], [0.15, -0.35, 1]);
     const hp = new Parts();
-    hp.add('decal', hayGeo(true), 0xffffff);
+    hp.add('matte', hayGeo(true), C.hay);
     const hay = this.kit.mesh(hp, this.bucket, 'hay');
     hay.position.set(0, H * 0.72, 0);
     this.hay = hay;

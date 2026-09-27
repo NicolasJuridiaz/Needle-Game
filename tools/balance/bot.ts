@@ -19,7 +19,7 @@ import type { Building } from '../../src/sim/building';
 import { buildingCenter, localToOffset, rotatedSize } from '../../src/sim/grid';
 import { BUILDABLES } from '../../src/config/buildables';
 import {
-  carryCapacity, detectorReading, playerDig, playerVacuum, spawnWheelbarrow, toggleWheelbarrow,
+  carryCapacity, depositToIntake, detectorReading, intakeDropPoint, playerDig, playerVacuum, spawnWheelbarrow, toggleWheelbarrow,
 } from '../../src/sim/playerActions';
 import { Sim } from '../../src/sim/sim';
 import { DIR_DX, DIR_DZ, oppositeDir, type BuildingType, type Cell, type Dir, type Rot, type ToolId } from '../../src/sim/types';
@@ -376,9 +376,9 @@ export class Bot {
       const c = hopper.center;
       return { b: hopper, x: c.x - 0.5, z: c.z + 2 };
     }
-    const s = sim.sellStation!;
-    const c = s.center;
-    return { b: s, x: c.x + 2.3, z: c.z };
+    // Carried hay is sold by dropping it on the Market intake belt (the chute no longer takes it directly).
+    const p = intakeDropPoint();
+    return { b: sim.sellStation!, x: p.x, z: p.z };
   }
 
   /** Dig until carry (and a parked barrow nearby) is full. */
@@ -439,7 +439,8 @@ export class Bot {
     }
     const dp = this.dropTarget();
     this.moveTo(dp.x, dp.z);
-    dp.b.interact(sim);
+    if (dp.b.type === 'sellStation') depositToIntake(sim);
+    else dp.b.interact(sim);
     this.advance(0.6);
   }
 

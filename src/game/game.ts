@@ -15,6 +15,7 @@ import { Renderer } from '../render/renderer';
 import { Environment } from '../render/environment';
 import { HayView } from '../render/hayView';
 import { NeedleView } from '../render/needleView';
+import { INTAKE_AIM_BOX, MarketIntakeView, rayBox, STORE_AIM_BOX } from '../render/marketIntakeView';
 import { BeltView } from '../render/beltView';
 import { BuildingViews } from '../render/buildingViews';
 import { Ghost } from '../render/ghost';
@@ -26,7 +27,7 @@ import type { ModelInstance, ToolViewKind, ToolViewModel } from '../render/model
 import type { Building, BuildingInfo } from '../sim/building';
 import type { DetectorReading } from '../sim/interfaces';
 import {
-  carryCapacity, detectorReading, pickupNeedle, playerDig, playerVacuum, spawnWheelbarrow, toggleWheelbarrow,
+  carryCapacity, depositToIntake, detectorReading, pickupNeedle, playerDig, playerVacuum, spawnWheelbarrow, toggleWheelbarrow,
 } from '../sim/playerActions';
 import { Sim } from '../sim/sim';
 import type { BuildingType, SplitterMode, ToolId } from '../sim/types';
@@ -86,6 +87,9 @@ export class Game implements UIContext {
   private particles: Particles;
   private fx: Fx | null = null;
   private waypoint: Waypoint;
+  private readonly market: MarketIntakeView;
+  /** What the crosshair targets among the fixed Market props this frame. */
+  private marketAim: 'intake' | 'store' | null = null;
   private barrowModel: ModelInstance | null = null;
 
   private input: Input;
@@ -158,6 +162,7 @@ export class Game implements UIContext {
     this.env = new Environment(this.renderer.scene, this.settings.quality);
     this.particles = new Particles(this.renderer.scene, this.settings.quality);
     this.waypoint = new Waypoint(this.renderer.scene);
+    this.market = new MarketIntakeView(this.renderer.scene);
     this.renderer.scene.add(this.renderer.camera);
     this.input = new Input(this.renderer.domElement);
     this.input.onLockChange = (locked) => this.onLockChange(locked);
@@ -436,7 +441,7 @@ export class Game implements UIContext {
 
     // ----- interaction / build
     if (this.mode === 'play') this.updatePlay(dt, o, d);
-    else { this.aimState = { prompt: null, info: null, hay: false }; this.vacuuming = false; }
+    else { this.aimState = { prompt: null, info: null, hay: false }; this.vacuuming = false; this.marketAim = null; }
     if (this.mode === 'build') {
       if (this.build.update(o, d, this.input, time)) this.backToPlay(false);
       const aim = this.interaction.aim(o, d, 12, { hay: false, needles: false, barrow: false });
@@ -445,6 +450,8 @@ export class Game implements UIContext {
 
     // ----- views
     this.syncViews(dt, time);
+    const carryingAny = !this.sim.player.carry.isEmpty() || !!(this.sim.player.wheelbarrow?.held && !this.sim.player.wheelbarrow.inv.isEmpty());
+    this.market.update(dt, this.sim, this.marketAim === 'intake', carryingAny);
     this.updateViewmodel(dt, time);
     this.updateAudio(dt);
 
@@ -524,12 +531,31 @@ export class Game implements UIContext {
     } else if (aim.kind === 'wheelbarrow' && aim.distance <= interactRange) {
       prompt = { key: 'E', text: `Push wheelbarrow (${Math.round(barrow?.inv.weight() ?? 0)} hay)`, enabled: true };
     }
+    // Fixed Market props (not grid buildings): the SELL HAY intake belt and the Store kiosk.
+    this.marketAim = null;
+    const ahead = aim.kind === 'none' ? Infinity : aim.distance;
+    const tIntake = rayBox(o, d, INTAKE_AIM_BOX);
+    const tStore = rayBox(o, d, STORE_AIM_BOX);
+    if (tIntake !== null && tIntake <= interactRange && tIntake < ahead && (tStore === null || tIntake <= tStore)) {
+      this.marketAim = 'intake';
+      const carrying = !sim.player.carry.isEmpty() || (holding && !barrow!.inv.isEmpty());
+      prompt = carrying ? { key: 'E', text: 'Drop hay on the belt', enabled: true } : { key: 'E', text: 'Drop hay here to sell it', enabled: false, reason: 'Carrying nothing' };
+      info = null;
+    } else if (tStore !== null && tStore <= interactRange + 0.5 && tStore < ahead) {
+      this.marketAim = 'store';
+      prompt = { key: 'E', text: 'Open the Store', enabled: true };
+      info = null;
+    }
     if (!prompt && holding) prompt = { key: 'E', text: 'Park the wheelbarrow', enabled: true };
     this.aimState = { prompt, info, hay: aim.kind === 'hay' && aim.distance <= reach };
 
     // ----- E interact
     if (this.input.wasPressed('KeyE')) {
-      if (aim.kind === 'building' && aim.building && prompt && prompt.text !== 'Park the wheelbarrow') {
+      if (this.marketAim === 'intake') {
+        if (!depositToIntake(sim)) this.audio.play('deny', { volume: 0.6 });
+      } else if (this.marketAim === 'store') {
+        this.openPanel('shop');
+      } else if (aim.kind === 'building' && aim.building && prompt && prompt.text !== 'Park the wheelbarrow') {
         if (prompt.enabled) aim.building.interact(sim); else { this.audio.play('deny', { volume: 0.6 }); if (prompt.reason) sim.events.emit('player:denied', { reason: prompt.reason }); }
       } else if (aim.kind === 'needle' && aim.needleId !== undefined && aim.distance <= interactRange) {
         pickupNeedle(sim, aim.needleId);

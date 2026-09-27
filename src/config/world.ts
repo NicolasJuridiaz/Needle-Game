@@ -46,12 +46,31 @@ export const WORLD = {
     sellStation: { x: -32, z: 5, rot: 0 as const },
   },
 
+  /**
+   * Market intake (manual sell loop): a short FIXED belt along the west wall that runs south (+Z) into the north end
+   * of the Market Chute. The player drops carried hay on it; the chute sells it when it arrives (`transitSeconds`),
+   * through the same sale call as before. Not a grid building: its cells are reserved (no building can go there).
+   * Column x = -32 is the only strip that stays free in real late-game factories (RC1 fixture, bot saves).
+   * `dropPadX1`: east edge of the painted drop pad in front of the belt; aiming at the belt OR the pad drops the load,
+   * so the sell point is as far from the pile as the old E-on-the-chute point was (walking time unchanged).
+   */
+  intake: { x: -32, z0: 1, z1: 5, beltY: 0.45, transitSeconds: 1.8, dropPadX1: -29.6 },
+  /** Store kiosk (opens the Shop with E; the B key still works everywhere). Cells reserved like the intake. */
+  store: { x: -32, z0: -1, z1: 1 },
+
   /** Wall-mounted props (not grid buildings). */
   props: {
     orderBoard: { x: -31.8, y: 2.2, z: -3, facing: 0 },
     needleCase: { x: -31.8, y: 2.0, z: -9, facing: 0 },
   },
 } as const;
+
+/** Cells nothing can be built on (both levels): the Market intake belt and the Store kiosk. */
+export function isReservedCell(x: number, z: number): boolean {
+  const i = WORLD.intake, st = WORLD.store;
+  if (x === i.x && z >= i.z0 && z < i.z1) return true;
+  return x === st.x && z >= st.z0 && z < st.z1;
+}
 
 /** Grid index helpers for the full buildable area (interior + annex). */
 export const GRID = {

@@ -1,3 +1,5 @@
+import { WORLD } from '../../src/config/world';
+import { depositToIntake } from '../../src/sim/playerActions';
 /**
  * Shared helpers for the robustness audits (economy / softlock / save fuzz / completion).
  * Everything drives the REAL Sim through its public API; test-only shortcuts (granted WP/money,
@@ -200,4 +202,14 @@ export function refuel(sim: Sim, gen: Building, hay = 150): void {
   sim.player.carry.add('hay', hay);
   gen.interact(sim);
   sim.player.carry.clear();
+}
+
+/**
+ * Sells what the player carries the only way the game allows: drop it on the Market intake belt, then let it ride
+ * to the chute (WORLD.intake.transitSeconds). Returns false when nothing was carried.
+ */
+export function sellCarry(sim: Sim): boolean {
+  if (!depositToIntake(sim)) return false;
+  run(sim, WORLD.intake.transitSeconds + 0.1);
+  return true;
 }

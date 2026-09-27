@@ -21,7 +21,7 @@ import { oppositeDir, type BuildingType, type Cell, type ItemPacket, type ItemTy
 import { Bot } from '../tools/balance/bot';
 import {
   allContents, beltRun, expectNeedleInvariant, feed, findSpot, inPorts, logisticsContents, outPorts, parkPlayer, place,
-  refuel, rich, run, tally, unlock,
+  refuel, rich, run, sellCarry, tally, unlock,
 } from './support/simKit';
 
 /** Every technology at its maximum level (Hay Sell Value Lv.10 included): the worst case for exploits. */
@@ -606,21 +606,24 @@ describe('economy: selling', () => {
     expect(JSON.stringify(p.stats)).toBe(snapStats);
   });
 
-  it('the chute sells the whole carry once; zero / fractional carry cannot mint money', () => {
+  it('the intake sells the whole carry once; zero / fractional carry cannot mint money', () => {
     const sim = new Sim(401);
     const chute = sim.sellStation!;
     const p = sim.progress;
-    expect(chute.interact(sim)).toBe(false); // nothing carried
+    expect(chute.interact(sim)).toBe(false); // E on the chute never sells
+    expect(sellCarry(sim)).toBe(false); // nothing carried
     expect(p.money).toBe(0);
     sim.player.carry.add('hay', 0.4);
-    expect(chute.interact(sim)).toBe(true);
+    expect(chute.interact(sim)).toBe(false); // carrying: still no direct sale
+    expect(p.money).toBe(0);
+    expect(sellCarry(sim)).toBe(true);
     expect(p.money).toBeCloseTo(saleValue(sim, 'hay', 0.4), 9);
     expect(sim.player.carry.isEmpty()).toBe(true);
-    expect(chute.interact(sim)).toBe(false);
+    expect(sellCarry(sim)).toBe(false);
     const m1 = p.money;
     // A fractional bale (corrupt state) cannot be sold as a whole one.
     sim.player.carry.bale = 0.5;
-    chute.interact(sim);
+    sellCarry(sim);
     expect(p.money).toBe(m1);
     expect(p.stats.baleSold).toBe(0);
     sim.player.carry.bale = 0;
@@ -629,7 +632,7 @@ describe('economy: selling', () => {
     data.player.carry = { hay: -50, bale: -2, wrapped: 0, needles: [] };
     const sim2 = Sim.fromSave(data);
     const m2 = sim2.progress.money;
-    sim2.sellStation!.interact(sim2);
+    sellCarry(sim2);
     expect(sim2.progress.money).toBe(m2);
     expect(sim2.progress.money).toBeGreaterThanOrEqual(0);
     // Mixed carry sells for the sum of the parts.
@@ -637,7 +640,7 @@ describe('economy: selling', () => {
     sim.player.carry.add('bale', 2);
     sim.player.carry.add('wrapped', 1);
     const m3 = p.money;
-    expect(chute.interact(sim)).toBe(true);
+    expect(sellCarry(sim)).toBe(true);
     expect(p.money - m3).toBeCloseTo(saleValue(sim, 'hay', 12) + saleValue(sim, 'bale', 2) + saleValue(sim, 'wrapped', 1), 9);
     expect(sim.player.carry.isEmpty()).toBe(true);
   });

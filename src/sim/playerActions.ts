@@ -183,3 +183,19 @@ export function carryCapacity(sim: Sim): number {
   const bonus = sim.progress.ownedTools.has('bucket') ? sim.stat('tool.bucket.carryBonus') : 0;
   return sim.stat('player.carry') + bonus;
 }
+
+/** Point on the floor next to the Market intake belt where the player stands to drop hay (bot, hints). */
+export function intakeDropPoint(): { x: number; z: number } {
+  const i = WORLD.intake;
+  return { x: i.dropPadX1 + 0.8, z: (i.z0 + i.z1) / 2 }; // 0.8 m in front of the drop pad, like the old chute stop
+}
+
+/**
+ * Drops everything the player carries (carry + held wheelbarrow) on the Market intake belt; the chute sells it when
+ * it arrives. The only way to sell carried items. Returns false when there was nothing to drop.
+ */
+export function depositToIntake(sim: Sim): boolean {
+  // Structural access (no import of the machine class: playerTransfer already imports this module).
+  const chute = sim.sellStation as unknown as { depositIntake?: (ctx: Sim) => number } | undefined;
+  return !!chute?.depositIntake && chute.depositIntake(sim) > 0;
+}

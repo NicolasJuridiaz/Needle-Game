@@ -1,3 +1,4 @@
+import { WORLD } from '../config/world';
 import type { Sim } from '../sim/sim';
 import { carryCapacity } from '../sim/playerActions';
 import type { GameMode } from '../ui/context';
@@ -30,9 +31,10 @@ export interface HintEnv {
   flags: Set<string>;
 }
 
-const sellTarget = (g: HintEnv) => {
-  const s = g.sim.sellStation;
-  return s ? { x: s.center.x + 1.2, y: 4.2, z: s.center.z } : undefined;
+/** Waypoint above the Market intake belt (the SELL HAY belt next to the chute). */
+const sellTarget = (_g: HintEnv) => {
+  const i = WORLD.intake;
+  return { x: i.x + 0.5, y: 2.2, z: (i.z0 + i.z1) / 2 };
 };
 
 const RULES: HintRule[] = [
@@ -46,7 +48,7 @@ const RULES: HintRule[] = [
     id: 'sell', key: 'E',
     when: (g) => g.sim.player.carry.weight() >= Math.min(10, carryCapacity(g.sim) * 0.5),
     done: (g) => g.sim.progress.stats.firstSaleAt >= 0,
-    text: () => 'Carry it to the MARKET CHUTE and press E to sell',
+    text: () => 'Carry it to the SELL HAY belt and press E to drop it',
     target: sellTarget,
   },
   {
@@ -59,7 +61,7 @@ const RULES: HintRule[] = [
     id: 'shop', key: 'KeyB',
     when: (g) => [...g.sim.progress.nodes.keys()].some((id) => id === 'p_shovel' || id === 'p_bucket'),
     done: (g) => g.sim.progress.ownedTools.size > 1,
-    text: (g) => `New plans! Press ${g.label('KeyB')} to open the Shop and buy it`,
+    text: (g) => `New plans! Buy it at the STORE next to the belt (or press ${g.label('KeyB')})`,
   },
   {
     id: 'equip',

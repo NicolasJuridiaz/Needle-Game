@@ -239,8 +239,16 @@ packets (`Inventory.needles` → `takePacket`). Player-emptied trays: if the pla
 hidden needle from a tray/hopper/silo with E, the needle is FOUND ('manual') — the player notices it.
 
 - **sellStation** (Market Chute): accepts any item at any input port, instantly sells:
-  `ctx.progress.recordSale(type, amount, viaBelt=true, pos)`; anim.pulse. Manual: E sells the player's
-  whole carry (and a HELD wheelbarrow's load): "Sell 35 hay ($35)". Unscanned needles → needleSlipped.
+  `ctx.progress.recordSale(type, amount, viaBelt=true, pos)`; anim.pulse. Unscanned needles → needleSlipped.
+  **Manual selling goes through the fixed intake belt** (`WORLD.intake`, cells x=-32, z 1..4, reserved by
+  `isReservedCell`, not a grid building): `depositIntake(ctx)` (via `playerActions.depositToIntake`) moves the
+  whole carry + a HELD wheelbarrow's load into a load queue (hidden needles slip back to the pile at drop time,
+  as the old direct sale did); after `WORLD.intake.transitSeconds` (1.8 s) each load is sold with the same
+  `recordSale(type, amount, viaBelt=false, pos)` call. E on the chute itself never sells (`interact` → false).
+  The queue is saved in the chute's state (`intake`); older saves load with an empty belt.
+- **Store kiosk** (`WORLD.store`, cells x=-32, z -1..0, reserved): a fixed prop next to the intake; E opens
+  the Shop panel (B still works everywhere). Render: `src/render/marketIntakeView.ts` (belt tiles, bundles
+  from `intakeLoads()`, drop highlight, SELL HAY / STORE signs); game layer aims at it with `rayBox`.
 - **hopper**: Inventory, capacity `hopper.capacity` (hay-eq). Accepts any item from belts; manual E
   deposits the whole carry (or held wheelbarrow) — if `tool.bucket.quickDump` the game allows it from
   `tool.bucket.dumpRange` (game layer checks range). Outputs packets (10 hay / 1 bale) to linked out ports
@@ -403,7 +411,7 @@ order; save round-trip; dig respects capacity & cooldown; barrow overflow; manua
   | MSAA | on | off | off |
   | Sun shadows | 2048, soft, belt items cast | 1024 | off |
   | Lamps (point lights) | 4 | 3 | 2 |
-  | Straw tufts | 4000 | 2000 | 800 |
+  | Straw clump pool (60 % used) | 4000 | 2000 | 800 |
   | Particles cap | 1500 | 900 | 400 |
   | Dust motes / light shafts | 700 / on | 400 / on | 0 / off |
   | Anisotropy / floor texture | 8 / 2048 | 4 / 2048 | 2 / 1024 |
@@ -424,13 +432,19 @@ order; save round-trip; dig respects capacity & cooldown; barrow overflow; manua
 - Lighting: hemisphere + one directional "sun" through skylights with shadows (high: 2048 PCFSoft;
   medium: 1024; low: off) + a few warm lamps (no shadows). Light the pile nicely (it's the hero).
 - Materials: one shared vertex-coloured MeshStandardMaterial "palette" for most props/machines, a few
-  special materials (hay, metal, glass, emissive). Procedural canvas textures: hay straw, concrete,
+  special materials (hay, metal, glass, emissive). Procedural canvas textures: concrete,
   corrugated metal, wood, belt rubber (scrolling), hazard stripes, labels/decals.
-- **HayView**: mesh over the hay grid (vertices at cell centres), positions from `heights` (hidden under
-  the floor where h≈0), normals recomputed in the dirty rect only; hay material with straw texture +
-  vertex colour variation (darker in crevices, lighter on top). Straw tufts: InstancedMesh of crossed
-  alpha-tested quads (~4000 high / 2000 medium / 800 low) scattered on hay cells, updated only for dirty
-  cells. Exposed needles: glinting sprite + small mesh. Update budget < 2 ms/frame.
+- **HayView** (stylised low-poly): mesh over the hay grid (one vertex per cell centre, x/z jittered ±22 % of
+  a cell and y ±7 cm on deep hay so the facets are irregular; cosmetic only, the sim heightfield is untouched),
+  positions from `heights` (hidden under the floor where h≈0), updated in the dirty rect only. Flat-shaded
+  MeshStandardMaterial, no texture: vertex colours from a 4-tone straw palette (`hayToneIndex`: creases and
+  thin floor hay darker, crests and the upper pile paler, large soft patches). Straw clumps: one InstancedMesh
+  of an 18-triangle faceted lump (pool 4000 / 2000 / 800, ~60 % of the profile density used), palette-tinted
+  per instance, updated only for dirty cells. Exposed needles: glinting sprite + small mesh.
+- **First-person hands** (`src/render/models/tools.ts`, `glove()`): procedural low-poly bare hands (palm,
+  thumb, four two-segment fingers, knuckles) in two poses (`open` for the Hands tool, `grip` around tool
+  handles) + short shirt cuff. Hands tool animation: idle breathing, reach on grab, close in under a load,
+  short push when the load is dropped.
 - **BeltView**: instanced conveyor tiles (straight / curve L / curve R / ramp / legs for level 1),
   scrolling belt texture (UV offset by time × speed). Items: InstancedMesh per item type from
   `logistics.forEachItem(alpha)`; hay clumps, bales, wrapped (white film; premium gold stripe).

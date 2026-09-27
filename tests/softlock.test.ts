@@ -23,7 +23,7 @@ import { EventBus } from '../src/core/events';
 import { oppositeDir, type BuildingType, type Rot } from '../src/sim/types';
 import { Bot } from '../tools/balance/bot';
 import {
-  DT, expectNeedleInvariant, feed, inPorts, outPorts, parkPlayer, place, refuel, rich, run, tally, unlock,
+  DT, expectNeedleInvariant, feed, inPorts, outPorts, parkPlayer, place, refuel, rich, run, sellCarry, tally, unlock,
 } from './support/simKit';
 
 const CHUTE = { x: -28, z: 6 };
@@ -48,7 +48,7 @@ function handTrip(sim: Sim, tool: 'hands' | 'shovel' = 'hands'): number {
   }
   sim.player.pos = { x: CHUTE.x, y: 0, z: CHUTE.z };
   run(sim, 6); // walking back
-  sim.sellStation!.interact(sim);
+  sellCarry(sim);
   parkPlayer(sim);
   return sim.time - t0;
 }
@@ -137,8 +137,8 @@ describe('softlock: money and power recovery', () => {
     const t = sim.hay.findTarget(5, 0, 20, 'densest')!;
     for (let i = 0; i < 200; i++) { sim.player.cooldown = 0; if (playerDig(sim, 'hands', t.x, t.height, t.z).full) break; }
     expect(sim.player.carry.weight()).toBeCloseTo(cap, 2);
-    expect(sim.sellStation!.interaction(sim)?.enabled).toBe(true);
-    expect(sim.sellStation!.interact(sim)).toBe(true);
+    expect(sim.sellStation!.interaction(sim)?.enabled).toBe(false); // the chute points to the intake belt
+    expect(sellCarry(sim)).toBe(true);
     expect(sim.player.carry.isEmpty()).toBe(true);
     expect(sim.progress.money).toBeCloseTo(cap * sim.stat('econ.hayValue') * sim.stat('econ.saleMul'), 2);
     // Full carry + full held wheelbarrow of mixed items.
@@ -149,7 +149,7 @@ describe('softlock: money and power recovery', () => {
     sim.player.wheelbarrow = { pos: { x: 0, y: 0, z: 0 }, yaw: 0, held: true, inv };
     sim.player.carry.add('hay', cap);
     const m0 = sim.progress.money;
-    expect(sim.sellStation!.interact(sim)).toBe(true);
+    expect(sellCarry(sim)).toBe(true);
     expect(sim.player.carry.isEmpty()).toBe(true);
     expect(sim.player.wheelbarrow.inv.isEmpty()).toBe(true);
     expect(sim.progress.money).toBeGreaterThan(m0);

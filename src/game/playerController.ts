@@ -169,6 +169,11 @@ export class PlayerController {
       // Slightly inset so players can slide along belts next to each other.
       this.boxes.push({ x0: b.cell.x + 0.02, x1: b.cell.x + w - 0.02, z0: b.cell.z + 0.02, z1: b.cell.z + d - 0.02, y0: base, y1: base + b.def.height });
     }
+    // Store kiosk (a fixed prop, not a grid building): solid like a machine.
+    const st = WORLD.store;
+    if (Math.abs(this.x - (st.x + 0.5)) < 4 && Math.abs(this.z - (st.z0 + st.z1) / 2) < 4) {
+      this.boxes.push({ x0: st.x, x1: st.x + 1, z0: st.z0 + 0.2, z1: st.z1 - 0.2, y0: 0, y1: 2.5 });
+    }
     // Platform decks as thin boxes (block from below, walkable on top).
     for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
       if (s.grid.hasPlatform(cx + dx, cz + dz)) {

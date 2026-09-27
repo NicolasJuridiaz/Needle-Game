@@ -1,6 +1,6 @@
 import { BALANCE } from '../config/balance';
 import { BUILDABLES, LOGISTICS_TYPES } from '../config/buildables';
-import { WORLD } from '../config/world';
+import { isReservedCell, WORLD } from '../config/world';
 import { EventBus } from '../core/events';
 import { Rng } from '../core/rng';
 import { StaticBuilding, type Building, type BuildingCtor, type BuildingInfo } from './building';
@@ -218,6 +218,8 @@ export class Sim implements SimContext {
       const outside = bad.some((c) => !inGridBounds(c.x, c.z) || !isFloorCell(c.x, c.z, expansion));
       return fail(outside ? 'Outside the warehouse floor' : 'Space is occupied', bad);
     }
+    const reserved = cells.filter((c) => isReservedCell(c.x, c.z));
+    if (reserved.length) return fail('Reserved for the Market intake and Store', reserved);
 
     // Level-1 machines need platforms underneath.
     if (cell.level === 1 && def.needsPlatformOnLevel1) {
