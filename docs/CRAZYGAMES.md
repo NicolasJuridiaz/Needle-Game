@@ -1,5 +1,10 @@
 # CrazyGames readiness
 
+> 2026-09-27 (P0 Basic Launch): re-checked against docs.crazygames.com (intro, Basic Launch Guide, requirements
+> intro / technical / gameplay / ads / account integration, SDK game / data / video ads / leaderboards, partners).
+> No obsolete or unsafe SDK call found. Basic Launch does not need the SDK; the existing integration stays (it is
+> required for Full Launch and already correct). See "Basic Launch vs Full Launch" at the end.
+
 Checked against the official docs (docs.crazygames.com, 2026-09-26): SDK HTML5 v3 intro, Game module, Data module,
 Technical / Gameplay / Quality requirements, Account integration.
 
@@ -40,3 +45,22 @@ Technical / Gameplay / Quality requirements, Account integration.
 3. Test in the CrazyGames **Preview tool** (`crazygames.com/preview`) — the only place with the real `crazygames` environment.
 4. Provide store assets: cover/thumbnail images, description, controls text, category.
 5. Final name check (working title "Project Needle"; must stay original and not confusable with "Find The Needle").
+
+## Basic Launch vs Full Launch (2026-09-27)
+
+Official process (https://docs.crazygames.com/): Basic Launch = limited audience, 7-21 days (ends after ≥ 7 days
+and ≥ 500 plays, or at 21 days), SDK optional, monetization disabled; Full Launch requires the full implementation.
+
+| Item | Basic Launch | Status in this build | Full Launch (pending) |
+|---|---|---|---|
+| Size ≤ 50 MB initial / ≤ 250 MB total / ≤ 1500 files | required | 1.31 MB, 5 files | same |
+| `gameplayStart` (if SDK integrated) | required | yes, on the first click | yes |
+| `gameplayStart/Stop` everywhere | — | done | re-check in the QA tool |
+| Data module (progress save) | optional | done (select "Data Module" in the submission) | required |
+| `muteAudio` | — | done | required (HTML5) |
+| Ads (midgame / rewarded) | disabled | **not implemented (on purpose)** | to design after Basic Launch data; mute + pause + `gameplayStop` during ads, no reward on `adError` |
+| Account integration (User module) | — | not used (guest play + Data module) | only if accounts are ever added |
+| Leaderboards | invitation only | not implemented | only if CrazyGames invites the game |
+| User Consent notice | required when collecting data beyond the SDK | done: title-screen line when ByteBrew is active, link = `VITE_PRIVACY_POLICY_URL`; **the policy itself must be written** | same |
+| ByteBrew data partner | — | manual: invite `bytebrew@crazygames.com` in ByteBrew (docs/ANALYTICS_SETUP.md §11) | same |
+| Land in gameplay ≤ 1 click | Full requirement | yes ("Click to play" / "Click to continue") | same |

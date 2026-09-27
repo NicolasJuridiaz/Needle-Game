@@ -523,11 +523,20 @@ progression, soft percussion), 4–8 bars variations, low volume, toggleable. Re
 - `storage.ts`: `Storage` interface { get(key), set(key, value), remove(key) } → CrazyGames data module
   when available (environment crazygames/local), else localStorage (try/catch). Keys: `pn_save_v1`,
   `pn_settings`. Save JSON must stay < ~600 KB.
-- `analytics.ts`: `track(name, props)`; sinks: console (dev), in-memory ring buffer (for QA export), and
-  a pluggable remote sink (none by default). Events: game_loaded, game_start, first_hay, first_sale,
-  first_upgrade, work_tree_opened, first_machine, first_conveyor, first_automation, first_arm,
-  first_scanner, first_needle, needle_found(n), order_completed(id), work_node_unlocked(id),
-  factory_milestone(machines 10/25), game_completed(duration), session_duration (on pagehide), quit_state.
+- `platformService.ts`: `PlatformService` interface (what the game needs from a portal). `Platform`
+  (`crazygames.ts`) implements it and doubles as the standalone platform when the SDK is absent. No other portal
+  is implemented (no Poki code in the bundle).
+- Analytics (P0 Basic Launch, see docs/ANALYTICS_SETUP.md and docs/ANALYTICS_PRIVACY_NOTES.md):
+  - `analyticsService.ts`: `AnalyticsService`, the only analytics entry point: local buffer always, remote adapter
+    when enabled; queue until the adapter is ready, caps, opt-out, never throws.
+  - `analytics.ts`: local in-memory ring buffer (`window.__pnAnalytics`, `?debug=1` console output).
+  - `bytebrewAdapter.ts`: the ONLY file importing `bytebrew-web-sdk` (lazy chunk). `analyticsConfig.ts`: Vite env
+    (`VITE_BYTEBREW_*`, `VITE_APP_VERSION`, `VITE_ANALYTICS_ENABLED`, `VITE_PRIVACY_POLICY_URL`), `?analytics=0`.
+  - `analyticsEvents.ts`: event catalog + ByteBrew wire format (snake_case, string values, integers).
+  - Game side: `src/game/telemetry.ts` (`GameTelemetry`: sim/game events -> catalog, run-level dedupe persisted in
+    the save envelope, progress marks, playtime checkpoints, performance snapshots, error dedupe),
+    `src/game/profile.ts` (`pn_profile`: session/run counters), `src/game/welcomeBack.ts` (read-only card data).
+  - Gameplay, machines, UI and sim never import analytics providers.
 
 ## 10. Game layer (`src/game/*`, phase 2)
 

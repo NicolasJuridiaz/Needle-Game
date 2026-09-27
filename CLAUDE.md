@@ -17,6 +17,8 @@ Project Needle is a first-person 3D incremental factory game for the web, built 
 4. Prefer small, testable changes; update or add tests under `tests/` when behavior changes.
 5. Run `npm run typecheck`, focused tests, and `npm run build` when practical.
 6. Do not add generated output, dependencies, credentials, or local environment files to Git.
+   Authorized runtime dependencies: `three`, and `bytebrew-web-sdk` (analytics only, imported solely in
+   `src/platform/bytebrewAdapter.ts`). Analytics keys live in git-ignored `.env*` files (see `.env.example`).
 
 ## Useful commands
 

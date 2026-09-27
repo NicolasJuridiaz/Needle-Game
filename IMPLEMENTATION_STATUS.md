@@ -3,17 +3,19 @@
 Estados: NOT STARTED · IN PROGRESS · IMPLEMENTED · QA PASS · BLOCKED
 **QA PASS = ejecutado y comprobado por el lead** (tests, sim headless y/o navegador). IMPLEMENTED ≠ QA PASS.
 
-Última actualización: 2026-09-27 (RC2: escala 750k, Level System Lv.1-5, Hay Sell Value Lv.1-10, rebalance).
+Última actualización: 2026-09-27 (P0 Basic Launch: analytics ByteBrew detrás de AnalyticsService, telemetría, Welcome Back; RC2 sin cambios de balance).
 
 **Veredicto: RELEASE CANDIDATE — REQUIRES REAL-HARDWARE QA.** Lo pendiente está en `docs/RELEASE_CHECKLIST.md` (B y C).
+**P0 Basic Launch: CODE READY — NEEDS MANUAL QA** (claves ByteBrew, política de privacidad, playtest humano,
+FPS real, Preview de CrazyGames). Ver `docs/ANALYTICS_SETUP.md` §11, `docs/HUMAN_PLAYTEST_V1.md`, `docs/REAL_HARDWARE_QA.md`.
 
 ## Verificación global (ejecutada por el lead)
 
 | Check | Resultado |
 |---|---|
 | `npm run typecheck` | PASS (0 errores) |
-| `npm test` | PASS — 395/395 (19 ficheros) |
-| `npm run build` | PASS — `dist/` 1,27 MB, 4 ficheros (JS 1,16 MB / 331 KB gzip), rutas relativas |
+| `npm test` | PASS — 422/422 (21 ficheros; +27 de analytics / telemetría / Welcome Back / envelope v2) |
+| `npm run build` | PASS — `dist/` 1,31 MB, 5 ficheros (JS 1,18 MB / 338 KB gzip + chunk ByteBrew 25,7 KB / 9,3 KB gzip, cargado solo con claves), rutas relativas |
 | `npm run balance:many -- --seeds 50` (pajar 750k) | 50/50 completan · P10 59,4 · mediana 64,7 · P90 68,9 · máx. 80,3 min · Vacuum Collector y Scanner MK2 usados en 100 % · 49/50 sin tramo > 4 min (1 en 4:18) |
 | Test de tamaño de pajar (50 semillas c/u) | 500k mediana 55,6 (Collector 58 %) · 650k mediana 61,9 · 750k mediana 64,7 → 750k elegido (docs/PLAYTEST_V1.md §2) |
 | Auditoría Work Tree | 39 nodos · 39 alcanzables · 119 niveles probados · 0 muertos · 0 no-op · 0 descripciones incorrectas |
@@ -45,6 +47,9 @@ Estados: NOT STARTED · IN PROGRESS · IMPLEMENTED · QA PASS · BLOCKED
 | Plataforma CrazyGames / guardado / analytics | IMPLEMENTED | QA PASS (standalone) | Progreso 0 → n×100/6 → 100; SDK bloqueado/ausente/rechazado no bloquea ni ensucia la consola (47 tests); almacenamiento SDK → localStorage → memoria. SDK real no ejecutado (sin entorno CrazyGames) |
 | Game loop, controlador FPS, interacción, build mode, hints | IMPLEMENTED | QA PASS | Paso fijo 20 Hz; independencia de refresco probada (60/120/144/165 Hz) |
 | Bot de balance headless | IMPLEMENTED | QA PASS | Construye la fábrica real completa (RC2: 3 líneas independientes al Market Chute, escáner por línea, niveles con reserva de dinero, `--pile`); log de decisiones, huecos > 4 min, métricas de escala; payback (`tools/balance/payback.ts`) |
+| Analytics remota (ByteBrew) + telemetría P0 | IMPLEMENTED | QA PASS (tests + Chromium con red interceptada) | `AnalyticsService` / adapter ByteBrew / catálogo de eventos / dedupe por run en el save / opt-out; SDK real ejercitado en Chromium (init con cabecera `session_key`, cola vaciada en orden, `?analytics=0` = 0 peticiones). Dashboard de ByteBrew NO verificado (sin claves reales) |
+| Welcome Back | IMPLEMENTED | QA PASS (tests + navegador) | Tarjeta de solo lectura en la pantalla click-to-play tras ≥ 20 min fuera; probada con el save real de RC1 a 907×510 |
+| Save envelope v2 (`meta.telemetry`) | IMPLEMENTED | QA PASS | Formato de sim sin cambios (v2); envelopes v1 (RC1/RC2) cargan y se rellenan sin enviar eventos |
 | Playtest humano completo 50–70 min | NOT STARTED | — | No realizable en este entorno (ver abajo) |
 | Rendimiento en hardware real | NOT STARTED | — | Solo coste de CPU medido |
 
@@ -62,6 +67,10 @@ Estados: NOT STARTED · IN PROGRESS · IMPLEMENTED · QA PASS · BLOCKED
   por el proxy, lo que de paso verifica el fallback silencioso).
 
 ## Siguiente acción (fuera de este entorno)
+
+0. P0 Basic Launch: acciones manuales de `docs/ANALYTICS_SETUP.md` §11 (proyecto ByteBrew, claves, política de
+   privacidad, invitar `bytebrew@crazygames.com`), playtest a ciegas (`docs/HUMAN_PLAYTEST_V1.md`) y FPS real
+   (`docs/REAL_HARDWARE_QA.md`).
 
 1. `docs/RELEASE_CHECKLIST.md` B1: FPS real en Chrome/Edge (portátil iGPU + Chromebook 4 GB), High/Medium/Low,
    save tardío.

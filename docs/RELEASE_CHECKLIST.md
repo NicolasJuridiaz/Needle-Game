@@ -127,6 +127,8 @@ following https://docs.crazygames.com/requirements/ :
 | 8 | `reportGameCompletedPercentage`: 0 on new game, n×100/6 after each needle and on load, 100 on completion | ☐ |
 | 9 | Game works inside the portal iframe at 821×462 (minimum) and fullscreen; UI readable | ☐ |
 | 10 | Pointer lock works in the iframe; Esc releases it and pauses | ☐ |
-| 11 | Ads: **not implemented in V1**. If ads are added later, mute audio + `gameplayStop` during ads and re-test | ☐ |
+| 11 | Ads: **not implemented** (Basic Launch has no monetization). If ads are added later, mute audio + `gameplayStop` during ads and re-test | ☐ |
 | 12 | No console errors other than documented third-party ones | ☐ |
 | 13 | Submission form: title, description, controls, 6 screenshots/trailer, tags | ☐ |
+| 14 | Analytics (if ByteBrew keys are in the build): title screen shows the privacy notice with a working policy link; `?debug=1` → `__pnAnalyticsQA.status()` is `ready` inside the Preview iframe; ByteBrew dashboard receives `game_session_start` (docs/ANALYTICS_SETUP.md §11) | ☐ |
+| 15 | Welcome Back: a save left ≥ 20 min shows the card on reload; the click continues; money/needles unchanged | ☐ |
