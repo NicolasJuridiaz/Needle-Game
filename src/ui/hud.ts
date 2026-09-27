@@ -27,6 +27,8 @@ export class Hud implements UIPart {
   private readonly wpChip: HTMLElement;
   private readonly floats: HTMLElement[] = [];
   private floatIdx = 0;
+  /** Big "+$X" pop above the crosshair when a load dropped on the SELL HAY belt is sold. */
+  private saleNote!: HTMLElement;
 
   // needles
   private readonly needleCount: TextSlot;
@@ -108,6 +110,7 @@ export class Hud implements UIPart {
     h('span', 'pn-res-unit', this.wpChip, 'WP');
     const floats = h('div', 'pn-floats', res);
     for (let i = 0; i < FLOATERS; i++) this.floats.push(h('span', 'pn-float', floats));
+    this.saleNote = h('div', 'pn-sale-note', el);
     const p = ctx.sim.progress;
     this.money.shown = p.money;
     this.wp.shown = p.wp;
@@ -200,7 +203,13 @@ export class Hud implements UIPart {
     this.refreshNeedles();
 
     // ----- events
-    env.listen('sale', (e) => { if (!e.viaBelt && e.value > 0) this.floater(`+${fmtMoney(e.value)}`, 'money'); });
+    env.listen('sale', (e) => {
+      if (e.viaBelt || !(e.value > 0)) return;
+      this.floater(`+${fmtMoney(e.value)}`, 'money');
+      // manual sales only happen when a load from the SELL HAY belt reaches the chute: make that moment readable
+      this.saleNote.textContent = `+${fmtMoney(e.value)}`;
+      replayClass(this.saleNote, 'is-on');
+    });
     env.listen('wp:changed', (e) => { if (e.delta > 0) this.floater(`+${fmtInt(e.delta)} WP`, 'wp'); });
     env.listen('money:changed', (e) => { if (e.delta < 0) replayClass(this.moneyChip, 'is-spend'); });
     env.listen('needle:found', () => this.refreshNeedles());

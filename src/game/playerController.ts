@@ -79,7 +79,7 @@ export class PlayerController {
     const len = Math.hypot(mx, mz);
     if (len > 0) { mx /= len; mz /= len; }
     const sprint = input && (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) ? s.stat('player.sprintMul') : 1;
-    const onHay = s.hay.heightAt(this.x, this.z) > this.y - 0.05 + HAY_SINK && this.onGround;
+    const onHay = this.hayHeight(this.x, this.z) > this.y - 0.05 + HAY_SINK && this.onGround;
     const speed = s.stat('player.moveSpeed') * sprint * speedMul * (onHay ? HAY_SPEED_MUL : 1);
     const tx = mx * speed, tz = mz * speed;
     const accel = (this.onGround ? GROUND_ACCEL : AIR_ACCEL) * dt;
@@ -212,12 +212,15 @@ export class PlayerController {
     }
   }
 
+  /** Hay surface the player walks on: the visual pile when the game provides it (render mapping), else the sim's. */
+  hayHeight: (x: number, z: number) => number = (x, z) => this.sim.hay.heightAt(x, z);
+
   /** Highest walkable surface under (x,z) not above feetY + step height. */
   groundAt(x: number, z: number, feetY: number): number {
     const s = this.sim;
     let g = 0;
     const limit = feetY + STEP_HEIGHT;
-    const hay = s.hay.heightAt(x, z) - HAY_SINK;
+    const hay = this.hayHeight(x, z) - HAY_SINK;
     if (hay > g && hay <= limit + 0.3) g = hay; // hay is soft: allow climbing slightly steeper
     // Surfaces from buildings under the circle centre.
     const cx = Math.floor(x), cz = Math.floor(z);

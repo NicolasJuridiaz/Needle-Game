@@ -4,6 +4,7 @@ import type { IHayField } from '../sim/interfaces';
 import {
   HAY_TONES, TUFT_MIN_HEIGHT, TuftSlots, displayHeight, gridNormal, hash01, hayToneIndex, patchTone,
 } from './hayGrid';
+import { HaySurface } from './hayShape';
 import { qualityProfile, type Quality } from './quality';
 
 const _m = new THREE.Matrix4();
@@ -36,6 +37,8 @@ const JITTER_Y = 0.07;
 export class HayView {
   private readonly scene: THREE.Scene;
   private readonly hay: IHayField;
+  /** Visual mapping of the sim heightfield (render + game-layer surface queries; never written to the sim). */
+  readonly surface: HaySurface;
   private quality: Quality;
 
   private cols = 0;
@@ -69,6 +72,7 @@ export class HayView {
   constructor(scene: THREE.Scene, hay: IHayField, quality: Quality) {
     this.scene = scene;
     this.hay = hay;
+    this.surface = new HaySurface(hay);
     this.quality = quality;
     // Flat-shaded facets + palette vertex colours: no photographic texture, no normal map.
     this.material = new THREE.MeshStandardMaterial({
@@ -100,8 +104,10 @@ export class HayView {
     if (!this.mesh) return;
     const rect = hay.consumeDirtyRect();
     if (!rect) return;
-    // Treat the rect as inclusive and scan one extra row/column (cheap thanks to change detection).
-    this.apply(rect.c0, rect.r0, rect.c1 + 1, rect.r1 + 1);
+    // Treat the rect as inclusive plus one row/column, remap it to visual heights (grows it by the smoothing
+    // footprint), then apply the changed cells (cheap thanks to change detection).
+    const v = this.surface.update(rect.c0, rect.r0, rect.c1 + 1, rect.r1 + 1);
+    if (v) this.apply(v.c0, v.r0, v.c1, v.r1);
   }
 
   /** Live: rebuilds the straw clump pool for the new budget. */
@@ -130,6 +136,8 @@ export class HayView {
   private build(): void {
     this.destroyMesh();
     const hay = this.hay;
+    if (this.surface.stale()) this.surface.rebuild();
+    else this.surface.update(0, 0, hay.cols - 1, hay.rows - 1);
     this.cols = hay.cols;
     this.rows = hay.rows;
     this.cellSize = hay.cellSize;
@@ -148,7 +156,7 @@ export class HayView {
     this.jitterY = new Float32Array(n);
     this.jitterT = new Float32Array(n);
     this.marks = new Uint8Array(n);
-    const h = hay.heights;
+    const h = this.surface.visual;
     for (let r = 0; r < rows; r++) {
       const z = hay.originZ + (r + 0.5) * cs;
       for (let c = 0; c < cols; c++) {
@@ -251,7 +259,7 @@ export class HayView {
     c0 = Math.max(0, c0); r0 = Math.max(0, r0);
     c1 = Math.min(cols - 1, c1); r1 = Math.min(rows - 1, r1);
     if (c1 < c0 || r1 < r0) return;
-    const h = this.hay.heights, applied = this.applied, pos = this.positions, marks = this.marks;
+    const h = this.surface.visual, applied = this.applied, pos = this.positions, marks = this.marks;
     let mc0 = cols, mr0 = rows, mc1 = -1, mr1 = -1;
     for (let r = r0; r <= r1; r++) {
       let i = r * cols + c0;

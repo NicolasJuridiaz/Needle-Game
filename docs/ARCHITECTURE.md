@@ -434,9 +434,18 @@ order; save round-trip; dig respects capacity & cooldown; barrow overflow; manua
 - Materials: one shared vertex-coloured MeshStandardMaterial "palette" for most props/machines, a few
   special materials (hay, metal, glass, emissive). Procedural canvas textures: concrete,
   corrugated metal, wood, belt rubber (scrolling), hazard stripes, labels/decals.
+- **Visual hay surface** (`src/render/hayShape.ts`, three.js-free, `HaySurface`): the render side never draws the
+  sim heightfield as is. SIM HEIGHTFIELD -> VISUAL MAPPING -> RENDERED HAYSTACK: per cell, 3×3 smoothing, remap
+  `g(t) = 1 - (1 - t)^2.4` (t = height / pile height, crown at 0.82 × pile height; raises the flanks, flattens the
+  crown) and a few broad lobes (secondary masses, gains that scale with the local hay). Bounded: visual - logical in
+  [-2.4, +1.6] m; a cell shows hay iff the sim has hay there; monotonic, so digging always lowers it. Updated from
+  the sim dirty rect (+1 cell). Used by HayView (mesh), `Interaction.rayHay` (aim hits what you see; the hit X/Z goes
+  to the unchanged `playerDig` / `playerVacuum`), `PlayerController.groundAt` (walk on what you see) and the needle /
+  parked-barrow drawing (shifted by `offsetAt`). Nothing is written back: units, extraction, needles, depth bands,
+  bot, save are the sim's.
 - **HayView** (stylised low-poly): mesh over the hay grid (one vertex per cell centre, x/z jittered ±22 % of
   a cell and y ±7 cm on deep hay so the facets are irregular; cosmetic only, the sim heightfield is untouched),
-  positions from `heights` (hidden under the floor where h≈0), updated in the dirty rect only. Flat-shaded
+  positions from `HaySurface.visual` (hidden under the floor where h≈0), updated in the dirty rect only. Flat-shaded
   MeshStandardMaterial, no texture: vertex colours from a 4-tone straw palette (`hayToneIndex`: creases and
   thin floor hay darker, crests and the upper pile paler, large soft patches). Straw clumps: one InstancedMesh
   of an 18-triangle faceted lump (pool 4000 / 2000 / 800, ~60 % of the profile density used), palette-tinted

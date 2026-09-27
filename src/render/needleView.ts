@@ -19,6 +19,8 @@ interface Slot {
   x: number; y: number; z: number;
   sprite: THREE.Sprite;
   phase: number;
+  /** Visual-minus-logical surface offset used when this needle was last placed. */
+  oy: number;
 }
 
 function hash(n: number): number {
@@ -65,12 +67,14 @@ export class NeedleView {
   }
 
   /** Cheap per-frame diff against the sim's needle list; rebuilds instances only when something changed. */
-  sync(needles: readonly NeedleState[]): void {
+  sync(needles: readonly NeedleState[], surfaceOffset: (x: number, z: number) => number = () => 0): void {
     let changed = needles.length !== this.slots.length;
     if (!changed) {
       for (let i = 0; i < needles.length; i++) {
         const n = needles[i], s = this.slots[i];
         if (s.id !== n.id || s.status !== n.status || s.x !== n.pos.x || s.y !== n.pos.y || s.z !== n.pos.z) { changed = true; break; }
+        // the visual pile under an exposed needle moved (hay dug / slid nearby)
+        if (n.status === 'exposed' && Math.abs(surfaceOffset(n.pos.x, n.pos.z) - s.oy) > 0.02) { changed = true; break; }
       }
     }
     if (!changed) return;
@@ -81,7 +85,7 @@ export class NeedleView {
       sprite.visible = false;
       sprite.renderOrder = 5;
       this.root.add(sprite);
-      this.slots.push({ id: -1, status: '', x: 0, y: 0, z: 0, sprite, phase: 0 });
+      this.slots.push({ id: -1, status: '', x: 0, y: 0, z: 0, oy: 0, sprite, phase: 0 });
     }
     for (let i = needles.length; i < this.slots.length; i++) this.slots[i].sprite.visible = false;
     if (needles.length > this.capacity) {
@@ -95,6 +99,7 @@ export class NeedleView {
     for (let i = 0; i < needles.length; i++) {
       const n = needles[i], s = this.slots[i];
       s.id = n.id; s.status = n.status; s.x = n.pos.x; s.y = n.pos.y; s.z = n.pos.z;
+      s.oy = n.status === 'exposed' ? surfaceOffset(n.pos.x, n.pos.z) : 0;
       s.phase = hash(n.id) * Math.PI * 2;
       const show = n.status === 'exposed';
       s.sprite.visible = show;
@@ -104,10 +109,11 @@ export class NeedleView {
       const tilt = 0.25 + hash(n.id + 31) * 0.35;
       _e.set(0, yaw, tilt, 'YXZ');
       _q.setFromEuler(_e);
-      _p.set(n.pos.x, n.pos.y + 0.03, n.pos.z);
+      const y = n.pos.y + s.oy; // drawn on the visual pile surface
+      _p.set(n.pos.x, y + 0.03, n.pos.z);
       _m.compose(_p, _q, _s);
       this.mesh.setMatrixAt(count++, _m);
-      s.sprite.position.set(n.pos.x, n.pos.y + 0.14, n.pos.z);
+      s.sprite.position.set(n.pos.x, y + 0.14, n.pos.z);
     }
     this.mesh.count = count;
     this.mesh.instanceMatrix.needsUpdate = true;

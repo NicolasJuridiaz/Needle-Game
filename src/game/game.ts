@@ -237,6 +237,10 @@ export class Game implements UIContext {
     this.controller.onJump = () => this.audio.play('jump', { volume: 0.6 });
     this.controller.onLand = (v) => this.audio.play('land', { volume: Math.min(1, v / 10) });
     this.interaction = new Interaction(sim);
+    // Visual pile (render mapping of the sim heightfield): aim, walk and place things on what the player sees.
+    const surface = this.hayView.surface;
+    this.interaction.setHaySurface(surface);
+    this.controller.hayHeight = (x, z) => surface.heightAt(x, z);
     this.build = new BuildMode(sim, this.interaction, {
       setGridVisible: (on) => this.env.setGridVisible(on),
       showGhost: (type, cell, rot, variant, valid, ports, connected) => this.ghost.show(type, cell, rot, variant, valid, ports, connected),
@@ -612,14 +616,14 @@ export class Game implements UIContext {
     }
     this.wires.sync(sim.power.wires, sim.power.feeds, sim.buildings);
     this.hayView.update();
-    this.needleView.sync(sim.hay.needles);
+    this.needleView.sync(sim.hay.needles, (x, z) => this.hayView.surface.offsetAt(x, z));
     this.needleView.update?.(dt, time);
     this.beltView.update(sim.logistics, this.alpha, time, sim.stat('belt.speed'));
     this.buildingViews.update(dt, time);
     this.particles.update(dt, this.renderer.camera);
     const wb = sim.player.wheelbarrow;
     if (wb && this.barrowModel) {
-      this.barrowModel.root.position.set(wb.pos.x, wb.pos.y, wb.pos.z);
+      this.barrowModel.root.position.set(wb.pos.x, wb.held ? wb.pos.y : wb.pos.y + Math.max(0, this.hayView.surface.offsetAt(wb.pos.x, wb.pos.z)), wb.pos.z);
       this.barrowModel.root.rotation.y = wb.yaw;
       this.barrowModel.update({ fill: Math.min(1, wb.inv.weight() / Math.max(1, sim.stat('wheelbarrow.capacity'))), held: wb.held ? 1 : 0 }, dt, time);
     }
@@ -640,6 +644,10 @@ export class Game implements UIContext {
     const vm = this.currentVM;
     if (!vm) return;
     vm.root.visible = this.mode === 'play' || this.mode === 'build';
+    // The HUD toolbar has a fixed pixel height, so short windows (e.g. 907×510) hide more of the bare hands: lift them a
+    // little there (0 at >= 720 px tall). Tools are held higher and are not affected.
+    const vh = window.innerHeight || 720;
+    vm.root.position.y = kind === 'hands' ? Math.min(1, Math.max(0, (720 - vh) / 210)) * 0.035 : 0;
     this.actionT = Math.min(1, this.actionT + dt / this.actionDur);
     const cap = carryCapacity(sim);
     let det: { strength: number; dirAngle: number; distance: number; tooDeep: boolean; directional: boolean; precise: boolean } | undefined;

@@ -38,3 +38,28 @@ Early manual phase ~0.5 min later (the 1.8 s transit delays each payout); whole-
 ## Known limits
 - Pile silhouette still comes from the sim heightfield (tall dome with shoulders): BUGS.md B047.
 - Hands/FOV checked at 1280×720 and 907×510 only in SwiftShader; real-GPU check pending (docs/REAL_HARDWARE_QA.md).
+
+# Visual Pass 2 — pile silhouette decoupled from the sim (B047)
+
+**Coupling audit.** Before: `HayView` drew one vertex per sim cell at `hay.heights` (display = logical). Aiming
+(`Interaction.rayHay`) ray-marched `sim.hay.heightAt`; walking (`PlayerController.groundAt`) used `hay.heightAt`;
+digging (`playerDig` / `playerVacuum`) only takes the aimed X/Z and extracts from the sim column there; needles, depth
+bands, machines and the bot never read the render. So the visual shape could be decoupled in the render/game layer.
+
+**Solution.** `src/render/hayShape.ts` maps the sim heightfield to a visual one (3×3 smoothing, flank-raising remap,
+broad lobes, bounded offset +1.6 / -2.4 m, a cell shows hay iff it has hay, monotonic). HayView draws it; aim, walk,
+exposed needles and the parked barrow use it. The sim is unchanged (no diff under `src/sim`, `src/config`, `tools`).
+
+**Checks.** `tests/hayShape.test.ts` (6): bounds, hay-iff-hay, monotonic, less peaked, depletion + incremental =
+full rebuild, sim untouched (750,000 units), 400 aim rays: every hay hit lies on the visual surface and digs hay.
+Bot 12 seeds: results byte-identical to Pass 1 (only the wall-clock field differs).
+
+| Spawn view 1280×720 | Pass 1 | Pass 2 |
+|---|---|---|
+| Low | 16 / 62.5 k | 16 / 63.2 k |
+| Medium | 28 / 131.6 k | 28–29 / 133.0 k |
+| High | 28 / 150.2 k | 29 / 153.1 k |
+
+JS 1,190.7 → 1,193.9 KB (341.5 → 342.6 KB gzip). Also: centred `+$X` pop when a belt load sells (B048), bare
+hands lifted on windows < 720 px tall (B049), build mode refuses the intake / Store cells ("Reserved for the Market
+intake and Store", red ghost).

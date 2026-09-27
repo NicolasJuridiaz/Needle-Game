@@ -358,6 +358,12 @@
 }
 .pn-float--wp { color: #ffe08a; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55), 0 0 0.8em rgba(242, 193, 78, 0.55); top: calc(var(--u) * 1.6); }
 .pn-float.is-on { animation: pn-float-up 1.25s var(--ease) forwards; }
+.pn-sale-note {
+  position: absolute; left: 50%; top: 36%; transform: translateX(-50%); opacity: 0; pointer-events: none;
+  font-size: calc(var(--u) * 2.1); font-weight: 900; color: var(--good); white-space: nowrap;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.6), 0 0 1em rgba(139, 216, 109, 0.55);
+}
+.pn-sale-note.is-on { animation: pn-sale-note 1.4s var(--ease) forwards; }
 
 /* ----- needles + power (top-right) ----- */
 .pn-tr { position: absolute; right: calc(var(--u) * 1.1); top: calc(var(--u) * 1); display: flex; flex-direction: column; align-items: flex-end; gap: 0.5em; }
@@ -1235,6 +1241,7 @@
 @keyframes pn-shake { 0%, 100% { transform: translate(-50%, -50%); } 20% { transform: translate(calc(-50% - 5px), -50%); } 40% { transform: translate(calc(-50% + 5px), -50%); } 60% { transform: translate(calc(-50% - 3px), -50%); } 80% { transform: translate(calc(-50% + 2px), -50%); } }
 @keyframes pn-node-glow { 0%, 100% { box-shadow: 0 0 0.3em color-mix(in srgb, var(--bc) 30%, transparent), 0 0.3em 0.7em rgba(0, 0, 0, 0.4); } 50% { box-shadow: 0 0 1.3em color-mix(in srgb, var(--bc) 70%, transparent), 0 0.3em 0.7em rgba(0, 0, 0, 0.4); } }
 @keyframes pn-dash { to { stroke-dashoffset: -22; } }
+@keyframes pn-sale-note { 0% { opacity: 0; transform: translate(-50%, 0.5em) scale(0.8); } 14% { opacity: 1; transform: translate(-50%, 0) scale(1.1); } 30% { transform: translate(-50%, -0.1em) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -1.4em); } }
 @keyframes pn-float-up { 0% { opacity: 0; transform: translateY(0.4em) scale(0.8); } 15% { opacity: 1; transform: translateY(0) scale(1.08); } 30% { transform: translateY(-0.2em) scale(1); } 100% { opacity: 0; transform: translateY(-2.4em); } }
 @keyframes pn-spend { 0% { color: var(--bad); } 100% { color: inherit; } }
 @keyframes pn-full { 0%, 100% { box-shadow: 0 0 0 1px rgba(242, 95, 79, 0.6); } 50% { box-shadow: 0 0 0 1px rgba(242, 95, 79, 1), 0 0 1em rgba(242, 95, 79, 0.55); } }

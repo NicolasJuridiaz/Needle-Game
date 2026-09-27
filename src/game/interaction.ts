@@ -38,8 +38,26 @@ export function rayBox(
  * Engine-agnostic aiming against the sim: buildings (AABBs), the hay heightfield (ray-march),
  * exposed needles and the wheelbarrow. Used for tool use, prompts and build mode.
  */
+/** Visual hay surface (render mapping of the sim heightfield); defaults to the sim heightfield itself. */
+export interface HaySurfaceQuery {
+  heightAt(x: number, z: number): number;
+  /** Visual minus logical height at (x, z). */
+  offsetAt(x: number, z: number): number;
+}
+
 export class Interaction {
+  private surface: HaySurfaceQuery | null = null;
   constructor(private readonly sim: Sim) {}
+
+  /**
+   * Aim against the VISUAL hay surface (what the player sees). The hit's X/Z is what tools dig at, so the sim
+   * still decides what is extracted there (and a cell with visual hay always has logical hay).
+   */
+  setHaySurface(s: HaySurfaceQuery | null): void { this.surface = s; }
+
+  private hayHeight(x: number, z: number): number {
+    return this.surface ? this.surface.heightAt(x, z) : this.sim.hay.heightAt(x, z);
+  }
 
   aim(o: Vec3, d: Vec3, maxDist: number, opts: { hay?: boolean; needles?: boolean; buildings?: boolean; barrow?: boolean } = {}): Aim {
     const useHay = opts.hay !== false, useNeedles = opts.needles !== false, useBuildings = opts.buildings !== false, useBarrow = opts.barrow !== false;
@@ -72,12 +90,14 @@ export class Interaction {
       for (const n of sim.hay.needles) {
         if (n.status !== 'exposed') continue;
         // ray-sphere
-        const cx = n.pos.x - o.x, cy = n.pos.y + 0.05 - o.y, cz = n.pos.z - o.z;
+        // exposed needles lie on the logical surface; they are drawn (and aimed) on the visual one
+        const ny = n.pos.y + (this.surface ? this.surface.offsetAt(n.pos.x, n.pos.z) : 0);
+        const cx = n.pos.x - o.x, cy = ny + 0.05 - o.y, cz = n.pos.z - o.z;
         const tca = cx * d.x + cy * d.y + cz * d.z;
         if (tca < 0 || tca > maxDist) continue;
         const d2 = cx * cx + cy * cy + cz * cz - tca * tca;
         if (d2 > 0.45 * 0.45) continue;
-        if (tca < best.distance) best = { kind: 'needle', distance: tca, point: { ...n.pos }, needleId: n.id };
+        if (tca < best.distance) best = { kind: 'needle', distance: tca, point: { x: n.pos.x, y: ny, z: n.pos.z }, needleId: n.id };
       }
     }
 
@@ -90,14 +110,13 @@ export class Interaction {
 
   /** Ray-march the heightfield; returns hit distance or Infinity. */
   rayHay(o: Vec3, d: Vec3, maxDist: number): number {
-    const hay = this.sim.hay;
     const step = 0.06;
     let prevT = 0;
-    let prevAbove = o.y - hay.heightAt(o.x, o.z);
+    let prevAbove = o.y - this.hayHeight(o.x, o.z);
     if (prevAbove < 0) return 0.01;
     for (let t = step; t <= maxDist; t += step) {
       const x = o.x + d.x * t, y = o.y + d.y * t, z = o.z + d.z * t;
-      const h = hay.heightAt(x, z);
+      const h = this.hayHeight(x, z);
       const above = y - h;
       if (above <= 0 && h > 0.03) {
         // refine by linear interpolation
