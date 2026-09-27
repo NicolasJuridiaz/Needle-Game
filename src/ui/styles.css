@@ -1267,10 +1267,10 @@
 }
 
 /* ----- RC2 Level system: technology level chip, money cost, Now -> Next table ----- */
-.pn-tn-lv { font-size: clamp(8px, calc(var(--u) * 0.62), 11px); font-weight: 900; letter-spacing: 0.04em; color: var(--ink-3); padding: 0.05em 0.45em; border-radius: 1em; background: rgba(0, 0, 0, 0.35); font-variant-numeric: tabular-nums; }
+.pn-tn-lv { position: absolute; bottom: -0.65em; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: clamp(8px, calc(var(--u) * 0.62), 11px); font-weight: 900; letter-spacing: 0.04em; color: var(--ink-3); padding: 0.05em 0.5em; border-radius: 1em; background: #1d1813; border: 1px solid rgba(255, 238, 205, 0.14); font-variant-numeric: tabular-nums; z-index: 1; }
 .pn-tn.has-lv .pn-tn-lv { color: var(--bc); }
 .pn-tn.is-maxed .pn-tn-lv { color: #13280b; background: var(--bc); }
-.pn-tn-money { position: absolute; bottom: -0.6em; right: -0.45em; height: 1.55em; padding: 0 0.45em; display: flex; align-items: center; border-radius: 1em; font-size: clamp(8px, calc(var(--u) * 0.66), 11px); font-weight: 900; color: #ffe08a; background: #2a241d; border: 1px solid rgba(255, 224, 138, 0.35); box-shadow: 0 0.15em 0.35em rgba(0, 0, 0, 0.45); font-variant-numeric: tabular-nums; }
+.pn-tn-money { position: absolute; top: -0.55em; left: -0.45em; height: 1.55em; padding: 0 0.45em; display: flex; align-items: center; border-radius: 1em; font-size: clamp(8px, calc(var(--u) * 0.66), 11px); font-weight: 900; color: #ffe08a; background: #2a241d; border: 1px solid rgba(255, 224, 138, 0.35); box-shadow: 0 0.15em 0.35em rgba(0, 0, 0, 0.45); font-variant-numeric: tabular-nums; }
 .pn-tn-money:empty { display: none; }
 .pn-tn.is-poor .pn-tn-money { color: #ff9d90; border-color: rgba(255, 157, 144, 0.4); }
 .pn-tn.is-ready .pn-tn-money { color: #13280b; background: #ffe08a; border-color: transparent; }

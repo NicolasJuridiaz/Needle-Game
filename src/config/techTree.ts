@@ -250,7 +250,7 @@ export const TECH_NODES: TechNode[] = [
   { id: 'e_hay_value', name: 'Hay Sell Value', branch: 'processing', kind: 'upgrade', requires: [], icon: 'money', pos: [0, 0], leveled: true, levelBase: 1,
     levels: HAY_VALUE_MULTIPLIERS.slice(1).map((m, i) => lvm(
       HAY_VALUE_WP[i], Math.round((HAY_VALUE_REF[i] * HAY_VALUE_PREMIUM[i]) / 100) * 100,
-      `Hay products sell at ×${m.toFixed(2)} their base value (raw hay, bales and wrapped bales).`,
+      `Every hay product sells at ×${m.toFixed(2)} (raw, bales, wrapped).`,
       set('econ.hayMul', m),
     )) },
   { id: 'e_order_reward', name: 'Order Reward I', branch: 'processing', kind: 'upgrade', requires: [], icon: 'order', pos: [3, 0],

@@ -320,10 +320,22 @@ then last `set` overrides everything *before the needle buffs*; needle buff effe
 (so +15% belt speed also scales upgraded speeds). Cache in a Map, invalidate on unlock/needle.
 Unknown key → throw in dev (console.error) and return 0.
 
-**Unlock rules**: node exists; next level exists; all `requires` unlocked (level ≥1); `wp ≥ cost`.
-`unlock()` spends WP, sets level, invalidates stats, emits `node:unlocked`, and calls a hook so the Sim
-can refresh ports/power (`onUnlocked?: (id)=>void` property set by Sim). Reasons: "Requires X", "Need N
-more WP", "Maxed".
+**Unlock rules**: node exists; next level exists; the next purchase's requirements are met (the node's
+`requires` for the first purchase, plus the level's own `req`); `wp ≥ cost` and `money ≥ money cost`.
+A requirement is `"id"` (owned at any level) or `"id@N"` (that technology at displayed Lv.N or higher;
+`isUnlocked` understands both, also for gated ports such as `x_hopper@5`). `unlock()` spends WP and Money,
+sets level, invalidates stats, emits `node:unlocked`, and calls a hook so the Sim can refresh ports/power
+and the machines' `anim.tier` (`onUnlocked?: (id)=>void` property set by Sim). Reasons: "Requires Robotic
+Arm Lv.3", "Need N more WP", "Need $N more", "Maxed".
+
+**Level System (RC2, `config/techTree.ts`, `sim/levels.ts`)**: each tool / machine family is one
+`leveled` technology node: level 1 = plans (or the free starting level when `levelBase: 1`: Hands, Hay
+Sell Value), levels 2..5 = upgrades. Displayed level = owned levels + `levelBase`. Levels are global per
+technology: buildings never store a level, they read stats; `techForBuilding(type)` maps a building to
+its technology (all logistics pieces -> Conveyor Network, Scanner MK2 -> Needle Scanner) for the
+inspection line "Level Lv. x / 5", the Shop card and `anim.tier` (models show an upgrade kit from Lv.3).
+Hay Sell Value writes `econ.hayMul`, applied by `recordSale` to every product.
+Save v2: `sim/save.ts` migrates RC1 node lists (`RC1_TO_RC2`).
 
 **Shop**: `buildingUnlocked(type)`: requiresNode null or unlocked. `buildingCost(type, owned)` =
 `round(cost × costGrowth^owned)`. Tools: `canBuyTool` (plan unlocked, not owned, money), `buyTool`

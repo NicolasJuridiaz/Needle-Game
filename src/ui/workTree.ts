@@ -206,7 +206,7 @@ export class WorkTree extends Panel {
     const card = h('div', 'pn-tn-card', el);
     card.innerHTML = `<span class="pn-tn-ic">${icon(n.icon)}</span><span class="pn-tn-name">${escapeHTML(n.name)}</span>`;
     const pips: HTMLElement[] = [];
-    if (n.levels.length > 1) {
+    if (n.levels.length > 1 && !n.leveled) {
       const pr = h('span', 'pn-tn-pips', card);
       for (let i = 0; i < n.levels.length; i++) pips.push(h('i', '', pr));
     }
@@ -364,7 +364,7 @@ export class WorkTree extends Panel {
     html += `<div class="pn-td-head"><span class="pn-td-ic" style="--bc:${color}">${icon(n.icon)}</span><div><div class="pn-td-name">${escapeHTML(n.name)}</div>`;
     const levelText = n.leveled ? (level === 0 && !base ? `Not researched · max Lv. ${max}` : `Lv. ${shown} / ${max}`) : `Level ${level} / ${n.levels.length}`;
     html += `<div class="pn-td-meta"><span class="pn-td-kind">${n.leveled ? 'Technology' : KIND_LABEL[n.kind]}</span><span class="pn-td-lvl">${levelText}</span></div></div></div>`;
-    if (n.leveled) html += '<div class="pn-td-note">Upgrades every unit you own and every unit you build later.</div>';
+    if (n.leveled && n.unlocks) html += '<div class="pn-td-note">Upgrades every unit you own and every unit you build later.</div>';
 
     // Current -> next values of what the next level changes.
     const next = level < n.levels.length ? n.levels[level] : null;
@@ -386,8 +386,12 @@ export class WorkTree extends Panel {
     }
 
     html += '<ul class="pn-td-levels">';
-    if (base) html += `<li class="is-done">${icon('check')}<span><b>Lv 1</b> Starting level.</span></li>`;
+    // Long ladders (Hay Sell Value): owned levels collapse into one line, at most 4 upcoming levels are listed.
+    const long = n.levels.length > 5;
+    if (long && level + base > 0) html += `<li class="is-done">${icon('check')}<span><b>Lv 1${level + base > 1 ? `-${level + base}` : ''}</b> owned.</span></li>`;
+    else if (base) html += `<li class="is-done">${icon('check')}<span><b>Lv 1</b> Starting level.</span></li>`;
     n.levels.forEach((lvDef, i) => {
+      if (long && (i < level || i >= level + 4)) return;
       const cls = i < level ? 'is-done' : i === level ? 'is-next' : 'is-later';
       const costs = `<span class="pn-td-cost">${icon('wp')}${fmtInt(lvDef.cost)}${lvDef.money > 0 ? ` <span class="pn-td-money">${fmtPrice(lvDef.money)}</span>` : ''}</span>`;
       const tag = i < level ? icon('check') : costs;

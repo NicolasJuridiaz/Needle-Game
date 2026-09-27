@@ -13,7 +13,7 @@
   human should be slower, not faster.
 
 ```bash
-npm run balance:many -- --seeds 50 --gaps          # this report (≈4 min on one core)
+npm run balance:many -- --seeds 50 --gaps          # this report (default pile 750k; --pile 500000 to compare)
 # or in parallel: --shard i/4 --out sI.json (x4), then --merge s0.json s1.json s2.json s3.json --gaps
 npm run balance -- --seed 135623 --minutes 90 --decisions   # one run, every decision with its state
 ```
@@ -22,75 +22,77 @@ npm run balance -- --seed 135623 --minutes 90 --decisions   # one run, every dec
 1-min window) · POWER (demand/supply) · NEXT PURCHASE ($ the bot is saving for) · NEXT TECH (WP) ·
 ACTIVE ORDERS (id:progress) · NEEDLES.
 
-**Decision** = buy a tool/machine/belt line, unlock a Work Tree node, complete an order, find a needle,
+**Decision** = buy a tool/machine/belt line, unlock a Work Tree node or research a level (WP + $), complete an order, find a needle,
 move a machine, switch a machine off/on. Milestones are passive and do not count.
 
-## 2. Results — 50 seeds (seeds 1000 + k·7919), build `ad680bd`+
+## 2. RC2 results — pile size test (50 seeds each, seeds 1000 + k·7919)
 
-| | min | P10 | median | P90 | max |
+Level system, Hay Sell Value, RC2 prices, identical bot; only the pile size differs
+(`npm run balance:many -- --seeds 50 --pile <units>`).
+
+| | 500k | 650k | **750k (selected)** |
+|---|---|---|---|
+| Completed | 50/50 | 50/50 | 50/50 |
+| Completion min / P10 / **median** / P90 / max (min) | 50.7 / 51.4 / **55.6** / 59.8 / 63.7 | 53.5 / 57.9 / **61.9** / 67.8 / 71.8 | 55.3 / 59.4 / **64.7** / 68.9 / 80.3 |
+| Longest stretch without a decision: median / P90 / max (min) | 2.9 / 3.4 / 3.9 | 2.9 / 3.4 / 4.4 | 2.9 / 3.6 / 4.3 |
+| Seeds with a stretch > 4 min | 0/50 | 1/50 | 1/50 |
+| First Piston Rake / Conveyor / Robotic Arm (median, min) | 13.8 / 14.6 / 26.2 | 14.3 / 15.5 / 26.7 | 14.6 / 15.9 / 26.7 |
+| First Scanner / Vacuum Collector / Scanner MK2 = Scanner Lv.5 (median) | 30.9 / 50.8 / 49.7 | 30.8 / 51.4 / 50.0 | 30.9 / 52.2 / 50.4 |
+| **Vacuum Collector used** (>= 2 min before the end) | 58 % | 100 % | **100 %** (placed at 81 % of the run) |
+| **Scanner MK2 / Lv.5 used** | 72 % | 100 % | **100 %** (placed at 79 % of the run) |
+| Robotic Arms at the end (avg) | 8.1 | 15.5 | **18.3** |
+| Buildings at the end (avg) | 183 | 192 | **195** |
+| Levels bought (of 119) / Work Tree WP bought | 61 % / 66 % | 62 % / 67 % | 63 % / 68 % |
+| Hay Sell Value level at the end (avg) | 9.2 | 9.1 | 9.3 |
+| Avg levels: Arm / Rake / Collector / Conveyor / Scanner / Generator | 5.0 / 4.9 / 3.7 / 5.0 / 5.0 / 5.0 | 5.0 / 5.0 / 5.0 / 5.0 / 5.0 / 5.0 | 5.0 / 4.9 / 5.0 / 5.0 / 5.0 / 5.0 |
+| Money earned / money left at the end (avg) | $1.21M / $173k | $1.61M / $309k | $1.84M / $416k |
+
+**Selected: 750k.** It keeps the median inside the 55-65 min target (64.7), P90 at 68.9 (<= 75), the
+late machines in 100 % of runs and the longest decision gaps at <= 4.3 min, and builds the biggest
+factory. 500k is too short for the late game (Vacuum Collector used in 58 % of runs, MK2 in 72 %).
+650k is the safe alternative (median 61.9, tighter tail). **Tail at 750k:** 3/50 seeds take 75-80 min;
+all three find needle #2 very late (up to 48 min), so they lack WP and needle buffs and sit on Conveyor
+Lv.4 for ~15 min — the same seed (135623) was the slowest in RC1 too. A human with the Metal Detector
+should do better on those layouts; the human playtest has to confirm it.
+
+Late-game throughput (seed 8919, 750k): 74 hay/s at 25 min, 249 at 50, 396 at 55, 512 at 60 min;
+pile 48 % -> 94 % between 55 and 67 min. The slow stretch is 30-50 min (money-gated), not the end.
+
+### RC1 -> RC2 factory scale (50 seeds, end of run)
+
+| | RC1 (290k) | RC2 (750k) |
+|---|---|---|
+| Median completion | 56.0 min | 64.7 min |
+| Robotic Arms | 10.0 | **18.3** |
+| Piston Rakes / Vacuum Collectors | 4.0 / 3.6 | 6.0 / 6.0 |
+| Scanners | 2.0 | 3.0 (MK1 trunk + MK2 on each feeder line) |
+| Belt tiles | 109 | 145 |
+| Processing machines (silo, compressor, wrapper) | 3.0 | 3.0 |
+| Generators | 2.0 | 2.0 (power comes from Generator levels: 60 -> 290 P) |
+| All buildings | 146 | **195** |
+| Money earned | $473k | $1.84M |
+| Late delivered rate (hay/s, sample logs) | 85-115 | 400-510 |
+
+The bot also builds more *lines*: RC2 feeder lines run straight into their own Market Chute inputs
+(three independent lines instead of one trunk), which is where the extra arms go.
+
+### Payback (tools/balance/payback.ts, real machines at the pile edge, no belt limit)
+
+| Machine | Lv.1 | Lv.3 | Lv.5 | 1st unit payback (Hay Value Lv.1 -> Lv.9) | 10th unit |
 |---|---|---|---|---|---|
-| **Completion (6th needle), min** | 43.2 | **47.8** | **56.0** | **65.7** | 70.2 |
-| Longest stretch without a decision, min | 2.8 | 2.9 | 3.0 | 3.8 | 4.6 |
-| First conveyor line | 13.9 | 14.1 | 15.2 | 16.1 | 21.6 |
-| First Piston Rake | 11.7 | 12.6 | 13.2 | 15.3 | 19.5 |
-| First Robotic Arm | 19.7 | 22.3 | 24.5 | 25.7 | 31.2 |
-| First Scanner MK1 | 24.0 | 25.0 | 27.1 | 28.3 | 33.0 |
-| First Compressor | 30.3 | 32.5 | 36.3 | 40.5 | 46.7 |
-| First Wrapper | 34.8 | 37.3 | 42.7 | 46.6 | 51.9 |
-| First Vacuum Collector | 35.9 | 38.6 | 43.4 | 47.6 | 53.0 |
-| First Scanner MK2 | 35.1 | 38.0 | 43.1 | 47.7 | 52.5 |
-| Needle 1 | 2.2 | 8.5 | 8.9 | 10.0 | 11.2 |
-| Needle 2 | 5.6 | 11.6 | 12.3 | 13.9 | 44.0 |
-| Needle 3 | 14.3 | 20.9 | 31.1 | 46.1 | 48.9 |
-| Needle 4 | 23.7 | 32.3 | 45.6 | 51.9 | 60.3 |
-| Needle 5 | 32.3 | 42.5 | 50.7 | 58.2 | 62.1 |
-| Needle 6 | 43.0 | 47.6 | 55.8 | 65.5 | 70.0 |
-| WP earned in the run | 128 | 131 | 149 | 152 | 160 |
-| Work Tree bought (% of 235 WP) | 51 | 53 | 61 | 62 | 66 |
+| Piston Rake ($2,500, x1.22) | 15 hay/s | 24 | 50 | Lv.1: 2.8 min -> 71 s; Lv.5: 49 s -> 21 s | Lv.1 17 min; Lv.5 4.9 -> 2.1 min |
+| Robotic Arm ($7,000, x1.10) | 8.3 | 16.3 | 45 | Lv.1: 14 -> 6 min; Lv.5: 2.6 min -> 66 s | Lv.1 33 min; Lv.5 6.1 -> 2.6 min |
+| Vacuum Collector ($18,700, x1.15) | 50 | 62 | 120 | Lv.1: 6.2 -> 2.7 min; Lv.5: 2.6 min -> 66 s | Lv.1 22 min; Lv.5 9.1 -> 3.9 min |
 
-- 50/50 runs complete. Targets: P10 ≥ ~45 ✔ · median ~55 ✔ · P90 ≤ ~70 ✔.
-- **Vacuum Collector** running ≥ 2 min before the 6th needle: **49/50 (98 %)**, placed at a median
-  **77 %** of the run (P10 69 %, P90 85 %).
-- **Scanner MK2** running ≥ 2 min before the 6th needle: **50/50 (100 %)**, placed at a median **78 %**
-  of the run (P10 68 %, P90 84 %).
-- Stretches > 4 min without a decision: **3/50 seeds**, all 4:01–4:38, all in the arm phase
-  (36–44 min) waiting for the money for the next Robotic Arm:
+A machine bought when its technology is at the level players have at that moment pays back in 1-6
+minutes; no machine pays back in seconds when it is typically bought (the first rake is bought at Lv.1:
+2.8 min). Piston Rake Lv.5 used to make 92 hay/s (payback 12-27 s) and was toned down.
 
-  | seed | stretch | state at start |
-  |---|---|---|
-  | 24757 | 40:01 → 44:03 (4:01) | $5.0k, 4 WP saving for Wrapper Plans (5 WP), 87 hay/s delivered |
-  | 135623 | 36:37 → 41:15 (4:38) | $2.7k, 0 WP saving for Belt Speed II (5 WP), 60 hay/s, only 1 needle found (unlucky seed) |
-  | 333598 | 36:01 → 40:03 (4:01) | $2.6k, 4 WP saving for Belt Speed II (5 WP), 65 hay/s |
+## 3. History: RC1 pacing pass (290k pile, 50 seeds)
 
-## 3. What changed in this pass and why (bot evidence)
-
-| Run | P10 | median | P90 | seeds with a gap > 4 min | Collector / MK2 used |
-|---|---|---|---|---|---|
-| Start of pass | 44.4 | 48.8 | 57.5 | 18/50 (max 6.0 min) | 92 % / 92 % |
-| + Steady Flow after Wholesale, bot keeps deciding while digging out a needle | 43.0 | 47.5 | 53.4 | 5/50 | 100 % / 100 % |
-| + Generator Plans 1 WP, Truckload 1600, pile 240k | 45.1 | 50.9 | 60.6 | 0/50 (max 3.8) | 100 % / 100 % |
-| + pile 290k | 47.8 | 55.8 | 63.9 | 7/50 (max 4.4) | 100 % / 100 % |
-| + Robotic Arm cost growth 1.16 (**final**) | **47.8** | **56.0** | **65.7** | **3/50 (max 4.6)** | **98 % / 100 %** |
-
-Causes found in the gap analysis:
-
-1. **Mid-game WP stall (~30–41 min, 1/3 of seeds).** Rakes saturate the first 50 hay/s trunk, new arms
-   stay "Output blocked", *Robot Friends* (hay picked by arms) cannot progress, *Steady Flow* was chained
-   behind it and there was no WP for Belt Speed. → *Steady Flow* (45 hay/s for a minute) now opens after
-   *Wholesale*: the saturated trunk itself pays the WP for Belt Speed (DESIGN_DECISIONS D14).
-2. **Early WP drought (8:40 → 14:50, 4 seeds).** After the wheelbarrow nothing costs money and the only
-   WP source was *Truckload* (2000 hay by hand). → Generator Plans 2 → 1 WP (the $5k milestone makes it
-   affordable mid-stretch, the hand-fed generator opens *Stoke the Fire*), *Truckload* 2000 → 1600.
-3. **Bot artefact:** while digging a detected deep needle out by hand the bot made no other decision for
-   up to 5 min with $20k+ in the bank. It now spends money / WP between trips, as a player would.
-4. **Run too short** (median 48.8): the factory phase ended before the late machines paid off. → pile
-   200k → 290k units (same shape, D12): only dig depth changes, money per hay sold is unchanged.
-5. **Money waits between arms** (arm #5 cost $18.7k): growth 1.2 → 1.16.
-
-GDD §3.3 targets vs bot median: rake 16–19 (13.2), conveyor 22–25 (15.2),
-arm 31–34 (24.5), scanner 34–37 (27.1), compressor 37–40 (36.3), wrapper 49–52 (42.7), collector 55–58
-(43.4), MK2 58–62 (43.1), final 62–70 (56.0). The bot is ahead of the GDD clock by design (instant,
-never-hesitating builder); the human playtest decides whether the early game needs slowing down.
+RC1: P10 47.8 / median 56.0 / P90 65.7 min, 3/50 seeds with a 4:01-4:38 gap, Vacuum Collector 98 %,
+Scanner MK2 100 %. Changes of that pass (order DAG, WP drought, arm price growth, pile 290k) are recorded
+in docs/DESIGN_DECISIONS.md D12-D14.
 
 ## 4. Human playtest sheet (fill one per run)
 
@@ -123,7 +125,7 @@ Scanner MK1:
 Compressor:
 Wrapper:
 Vacuum Collector:
-Scanner MK2:
+Scanner MK2 (Scanner Lv.5):
 Needle 1:
 Needle 2:
 Needle 3:
@@ -133,6 +135,10 @@ Needle 6:
 Finish (summary screen):
 
 Total time:
+
+Levels at the end (Work Tree): Robotic Arm Lv.__  Conveyor Lv.__  Scanner Lv.__  Generator Lv.__
+Hay Sell Value Lv.__   Number of Robotic Arms: __   Money left at the end: $__
+Was a Level upgrade (Lv.x/5 card, WP + $) clear? What did you buy first with money: machines or levels?
 
 Lowest observed FPS (and where):
 Typical FPS:
