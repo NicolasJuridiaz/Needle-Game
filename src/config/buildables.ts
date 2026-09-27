@@ -90,7 +90,7 @@ export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   pistonRake: {
     id: 'pistonRake', name: 'Piston Rake', category: 'extraction',
     desc: 'Place facing the haystack. Rakes hay into its tray.',
-    requiresNode: 'x_rake', cost: 2500, costGrowth: 1.15, footprint: [2, 3], height: 2.4, power: 10,
+    requiresNode: 'x_rake', cost: 2500, costGrowth: 1.22, footprint: [2, 3], height: 2.4, power: 10,
     ports: [{ kind: 'out', cell: [0, 1], dir: 2, items: HAY, label: 'Tray chute' }],
     levels: [0], needsPlatformOnLevel1: false, removable: true, movable: true,
     throughputLabel: '15 hay/s', manualOutput: true, icon: 'rake', order: 11,

@@ -1,6 +1,6 @@
 import type { ModelInstance } from './api';
 import { cachedTemplate } from './cache';
-import { C, hayMound, lampMast, namePlate, ports, skid } from './kit';
+import { C, hayMound, lampMast, namePlate, ports, skid, tierKit } from './kit';
 import { shade, type Parts } from './parts';
 import { af, ease, HIDDEN, RigModel, TemplateBuilder, type Template } from './rig';
 
@@ -94,6 +94,7 @@ function generatorTemplate(): Template {
   r.tube('paint', [[1.0, by + 0.6, 0.45], [1.1, 1.3, 0.9], [0.9, 0.8, 1.05]], 0.045, COPPER, 8, ind);
   r.tube('paint', [[-0.3, by - 0.4, 0.5], [-0.35, 0.9, 0.9], [0.2, 0.75, 1.1]], 0.045, COPPER, 8, ind);
   r.cyl('paint', 0.16, 0.18, 0.3, COPPER, { pos: [1.0, by + 0.78, 0] }, 12, 'y');
+  tierKit(t, 3, 3, { postH: 1.2 });
   t.cullRadius = 2.8; t.cullCentre = [0, 1.5, 0];
   return t.build();
 }

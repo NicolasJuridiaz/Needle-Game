@@ -60,16 +60,22 @@ function scanAnim(extra: Record<string, number>): AnimFn {
   return (t) => ({ scan: (t * 1.1) % 1, active: 1, alarm: t % 14 > 10 ? 1 : 0, needles: Math.floor(t / 2.5) % 7, fill: wave(t, 0.5), ...extra });
 }
 
+/** Adds the technology level (models show their Lv.3 upgrade kit from tier 3). */
+const tier = (anim: (t: number) => Record<string, number>, lv: number) => (t: number) => ({ ...anim(t), tier: lv });
+
 const ENTRIES: Entry[] = [
   // row 0 — factory & extraction
   { label: 'sellStation', sub: 'Market Chute', kind: 'sellStation', anim: (t) => ({ pulse: pulse(t, 1.3) }), row: 0 },
   { label: 'hopper', kind: 'hopper', anim: (t) => ({ fill: wave(t, 0.6), out: Math.sin(t) > 0 ? 1 : 0 }), row: 0 },
   { label: 'pistonRake', kind: 'pistonRake', anim: rakeAnim(0), row: 0 },
-  { label: 'pistonRake industrial', kind: 'pistonRake', anim: rakeAnim(1), row: 0 },
+  { label: 'pistonRake Lv3', kind: 'pistonRake', anim: tier(rakeAnim(0), 3), row: 0 },
+  { label: 'pistonRake Lv5 industrial', kind: 'pistonRake', anim: tier(rakeAnim(1), 5), row: 0 },
   { label: 'roboticArm', kind: 'roboticArm', anim: armAnim(0), row: 0 },
-  { label: 'roboticArm mk2', kind: 'roboticArm', anim: armAnim(1), row: 0 },
+  { label: 'roboticArm Lv3', kind: 'roboticArm', anim: tier(armAnim(0), 3), row: 0 },
+  { label: 'roboticArm Lv5 advanced', kind: 'roboticArm', anim: tier(armAnim(1), 5), row: 0 },
   { label: 'vacuumCollector', kind: 'vacuumCollector', anim: vacAnim(0), row: 0 },
-  { label: 'vacuumCollector industrial', kind: 'vacuumCollector', anim: vacAnim(1), row: 0 },
+  { label: 'vacuumCollector Lv3', kind: 'vacuumCollector', anim: tier(vacAnim(0), 3), row: 0 },
+  { label: 'vacuumCollector Lv5 industrial', kind: 'vacuumCollector', anim: tier(vacAnim(1), 5), row: 0 },
   // row 1 — logistics
   { label: 'conveyor', kind: 'conveyor', anim: () => ({ curve: 0 }), row: 1 },
   { label: 'conveyor curveL', kind: 'conveyor', anim: () => ({ curve: -1 }), row: 1 },
@@ -84,16 +90,19 @@ const ENTRIES: Entry[] = [
   { label: 'beltLift down', kind: 'beltLift', variant: 'down', anim: (t) => ({ phase: wave(t, 1.1, 2) }), row: 1 },
   // row 2 — detection, processing, storage
   { label: 'scannerMk1', kind: 'scannerMk1', anim: scanAnim({}), row: 2 },
-  { label: 'scannerMk2', kind: 'scannerMk2', anim: scanAnim({ lanes: 1 }), row: 2 },
+  { label: 'scannerMk1 Lv3', kind: 'scannerMk1', anim: tier(scanAnim({}), 3), row: 2 },
+  { label: 'scannerMk2 (Lv5)', kind: 'scannerMk2', anim: scanAnim({ lanes: 1 }), row: 2 },
   { label: 'scannerMk2 dual', kind: 'scannerMk2', anim: scanAnim({ lanes: 2 }), row: 2 },
   { label: 'compressor', kind: 'compressor', anim: (t) => ({ press: 0.5 - 0.5 * Math.cos(t * 3), fill: wave(t, 0.4), chambers: 1 }), row: 2 },
-  { label: 'compressor x2', kind: 'compressor', anim: (t) => ({ press: 0.5 - 0.5 * Math.cos(t * 3), fill: wave(t, 0.4), chambers: 2 }), row: 2 },
+  { label: 'compressor Lv3', kind: 'compressor', anim: (t) => ({ press: 0.5 - 0.5 * Math.cos(t * 3), fill: wave(t, 0.4), chambers: 1, tier: 3 }), row: 2 },
+  { label: 'compressor Lv5 x2', kind: 'compressor', anim: (t) => ({ press: 0.5 - 0.5 * Math.cos(t * 3), fill: wave(t, 0.4), chambers: 2, tier: 5 }), row: 2 },
   { label: 'wrapper', kind: 'wrapper', anim: (t) => ({ spin: t * 5, wrap: (t * 0.35) % 1, premium: 0, hasBale: 1 }), row: 2 },
   { label: 'wrapper premium', kind: 'wrapper', anim: (t) => ({ spin: t * 5, wrap: (t * 0.35) % 1, premium: 1, hasBale: 1 }), row: 2 },
   { label: 'silo', kind: 'silo', anim: (t) => ({ fill: wave(t, 0.35) }), row: 2 },
   // row 3 — power & construction
   { label: 'hayGenerator', kind: 'hayGenerator', anim: (t) => ({ fire: 0.75 + 0.25 * Math.sin(t * 9), fuel: wave(t, 0.25), load: 0.8, industrial: 0 }), row: 3 },
-  { label: 'hayGenerator industrial', kind: 'hayGenerator', anim: (t) => ({ fire: 0.75 + 0.25 * Math.sin(t * 9), fuel: wave(t, 0.25), load: 1, industrial: 1 }), row: 3 },
+  { label: 'hayGenerator Lv3', kind: 'hayGenerator', anim: (t) => ({ fire: 0.75 + 0.25 * Math.sin(t * 9), fuel: wave(t, 0.25), load: 0.8, industrial: 0, tier: 3 }), row: 3 },
+  { label: 'hayGenerator Lv5 industrial', kind: 'hayGenerator', anim: (t) => ({ fire: 0.75 + 0.25 * Math.sin(t * 9), fuel: wave(t, 0.25), load: 1, industrial: 1, tier: 5 }), row: 3 },
   { label: 'powerPole', kind: 'powerPole', row: 3 },
   { label: 'platform', kind: 'platform', y: WORLD.levelHeight, row: 3 },
   { label: 'stairs', kind: 'stairs', row: 3 },

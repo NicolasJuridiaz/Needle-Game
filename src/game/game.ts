@@ -417,7 +417,7 @@ export class Game implements UIContext {
     if (this.mode === 'build') {
       if (this.build.update(o, d, this.input, time)) this.backToPlay(false);
       const aim = this.interaction.aim(o, d, 12, { hay: false, needles: false, barrow: false });
-      this.aimState = { prompt: null, info: aim.building ? aim.building.info(this.sim) : null, hay: false };
+      this.aimState = { prompt: null, info: aim.building ? this.sim.buildingInfo(aim.building.id) : null, hay: false };
     }
 
     // ----- views
@@ -492,7 +492,7 @@ export class Game implements UIContext {
     let info: BuildingInfo | null = null;
     if (aim.kind === 'building' && aim.building) {
       const b = aim.building;
-      if (aim.distance <= 10) info = b.info(sim);
+      if (aim.distance <= 10) info = sim.buildingInfo(b.id);
       const opt = b.interaction(sim);
       const range = opt?.kind === 'deposit' && quickDump ? sim.stat('tool.bucket.dumpRange') : interactRange;
       if (opt && aim.distance <= range) prompt = { key: 'E', text: opt.label, enabled: opt.enabled, reason: opt.reason };

@@ -1,9 +1,10 @@
 import { BUILDABLES } from '../config/buildables';
-import { BRANCHES, TECH_NODES, type BranchDef, type TechNode } from '../config/techTree';
+import { BRANCHES, displayLevel, maxDisplayLevel, parseRequirement, requirementLabel, TECH_NODES, type BranchDef, type TechNode } from '../config/techTree';
 import { TOOLS, WHEELBARROW } from '../config/tools';
 import type { BranchId } from '../sim/types';
 import { clamp, h, replayClass, TextSlot } from './dom';
-import { fmtInt } from './format';
+import { fmtInt, fmtPrice } from './format';
+import { STAT_LABELS } from './statLabels';
 import { icon } from './icons';
 import { button, escapeHTML, keycapHTML, Panel, type PartEnv } from './part';
 
@@ -49,18 +50,26 @@ export function edgePath(from: [number, number], to: [number, number]): string {
   return `M${x0} ${fy}C${mx} ${fy} ${mx} ${ty} ${x1} ${ty}`;
 }
 
-/** State of a node for the tree (pure; unit-tested). */
-export function nodeState(level: number, maxLevel: number, requiresMet: boolean, wp: number, nextCost: number): NodeState {
+/** State of a node for the tree (pure). Ready = requirements met and both WP and Money affordable. */
+export function nodeState(level: number, maxLevel: number, requiresMet: boolean, wp: number, nextCost: number, money = 0, nextMoney = 0): NodeState {
   if (level >= maxLevel) return 'maxed';
   if (!requiresMet) return level > 0 ? 'owned' : 'locked';
-  if (wp >= nextCost) return 'ready';
+  if (wp >= nextCost && money >= nextMoney) return 'ready';
   return level > 0 ? 'owned' : 'short';
+}
+
+/** Requirements of the NEXT purchase of a node ("id" / "id@N"): the plans' requirements, then per level. */
+function nextRequirements(n: TechNode, owned: number): string[] {
+  const lv = n.levels[owned];
+  return owned === 0 ? [...n.requires, ...(lv?.req ?? [])] : lv?.req ?? [];
 }
 
 interface NodeView {
   node: TechNode;
   el: HTMLElement;
   cost: TextSlot;
+  money: TextSlot;
+  lv: TextSlot | null;
   pips: HTMLElement[];
   state: NodeState | null;
   level: number;
@@ -168,7 +177,8 @@ export class WorkTree extends Panel {
     body.appendChild(svg);
     const ids = new Set(nodes.map((n) => n.id));
     for (const n of nodes) {
-      for (const r of n.requires) {
+      for (const r0 of n.requires) {
+        const r = parseRequirement(r0)[0];
         if (!ids.has(r)) continue;
         const from = NODE_BY_ID.get(r);
         if (!from) continue;
@@ -200,11 +210,13 @@ export class WorkTree extends Panel {
       const pr = h('span', 'pn-tn-pips', card);
       for (let i = 0; i < n.levels.length; i++) pips.push(h('i', '', pr));
     }
+    const lv = n.leveled ? new TextSlot(h('span', 'pn-tn-lv', card)) : null;
     const costEl = h('span', 'pn-tn-cost', el);
     const cost = new TextSlot(costEl);
+    const money = new TextSlot(h('span', 'pn-tn-money', el));
     h('span', 'pn-tn-lock', el).innerHTML = icon('lock');
     h('span', 'pn-tn-check', el).innerHTML = icon('check');
-    const ext = n.requires.filter((r) => NODE_BY_ID.get(r)?.branch !== n.branch);
+    const ext = n.requires.map((r) => parseRequirement(r)[0]).filter((r) => NODE_BY_ID.get(r)?.branch !== n.branch);
     if (ext.length) {
       const ex = h('span', 'pn-tn-ext', el);
       ex.innerHTML = icon('links');
@@ -216,7 +228,7 @@ export class WorkTree extends Panel {
     el.addEventListener('pointerenter', () => { this.hoverId = n.id; this.showDetail(n.id); this.env.sound('uiHover'); });
     el.addEventListener('pointerleave', () => { if (this.hoverId === n.id) { this.hoverId = null; this.detail.classList.remove('is-on'); } });
     el.addEventListener('click', () => this.onNodeClick(n.id));
-    this.views.set(n.id, { node: n, el, cost, pips, state: null, level: -1 });
+    this.views.set(n.id, { node: n, el, cost, money, lv, pips, state: null, level: -1 });
   }
 
   // =====================================================================================
@@ -246,7 +258,7 @@ export class WorkTree extends Panel {
     const p = this.env.ctx.sim.progress;
     let lv = 0;
     for (const v of p.nodes.values()) lv += v;
-    const sig = `${p.wp}|${lv}`;
+    const sig = `${p.wp}|${lv}|${Math.floor(p.money / 50)}`;
     if (sig !== this.sig) this.dirty = true;
     if (this.dirty) this.refresh();
   }
@@ -256,7 +268,7 @@ export class WorkTree extends Panel {
     const p = this.env.ctx.sim.progress;
     let lv = 0;
     for (const v of p.nodes.values()) lv += v;
-    this.sig = `${p.wp}|${lv}`;
+    this.sig = `${p.wp}|${lv}|${Math.floor(p.money / 50)}`;
     let unlocked = 0;
     let available = 0;
     const perBranch = new Map<BranchId, { owned: number; ready: number }>();
@@ -265,9 +277,10 @@ export class WorkTree extends Panel {
     for (const v of this.views.values()) {
       const n = v.node;
       const level = p.nodeLevel(n.id);
-      const reqMet = n.requires.every((r) => p.isUnlocked(r));
+      const reqMet = nextRequirements(n, level).every((r) => p.isUnlocked(r));
       const nextCost = level < n.levels.length ? n.levels[level].cost : 0;
-      const st = nodeState(level, n.levels.length, reqMet, p.wp, nextCost);
+      const nextMoney = level < n.levels.length ? n.levels[level].money : 0;
+      const st = nodeState(level, n.levels.length, reqMet, p.wp, nextCost, p.money, nextMoney);
       const ready = st === 'ready';
       if (level > 0) unlocked++;
       if (ready) available++;
@@ -282,6 +295,10 @@ export class WorkTree extends Panel {
         for (let i = 0; i < v.pips.length; i++) v.pips[i].classList.toggle('is-on', i < level);
       }
       v.cost.set(level < n.levels.length ? fmtInt(nextCost) : '');
+      v.money.set(level < n.levels.length && nextMoney > 0 ? fmtPrice(nextMoney) : '');
+      v.el.classList.toggle('is-poor', level < n.levels.length && p.money < nextMoney);
+      v.lv?.set(`Lv ${Math.max(1, displayLevel(n, level))}/${maxDisplayLevel(n)}`);
+      v.el.classList.toggle('has-lv', !!v.lv && (level > 0 || (n.levelBase ?? 0) > 0));
     }
     for (const e of this.edges) {
       const st = p.isUnlocked(e.to) ? 'done' : p.isUnlocked(e.from) ? 'open' : 'dim';
@@ -338,33 +355,61 @@ export class WorkTree extends Panel {
     const n = v.node;
     const p = this.env.ctx.sim.progress;
     const level = p.nodeLevel(id);
-    const max = n.levels.length;
+    const base = n.levelBase ?? 0;
+    const shown = Math.max(1, displayLevel(n, level));
+    const max = maxDisplayLevel(n);
     const color = BRANCH_COLOR.get(n.branch) ?? '#f2c14e';
     const branchName = BRANCHES.find((b) => b.id === n.branch)?.name ?? '';
     let html = `<div class="pn-td-branch" style="--bc:${color}">${escapeHTML(branchName)}</div>`;
     html += `<div class="pn-td-head"><span class="pn-td-ic" style="--bc:${color}">${icon(n.icon)}</span><div><div class="pn-td-name">${escapeHTML(n.name)}</div>`;
-    html += `<div class="pn-td-meta"><span class="pn-td-kind">${KIND_LABEL[n.kind]}</span><span>Level ${level} / ${max}</span></div></div></div>`;
+    const levelText = n.leveled ? (level === 0 && !base ? `Not researched · max Lv. ${max}` : `Lv. ${shown} / ${max}`) : `Level ${level} / ${n.levels.length}`;
+    html += `<div class="pn-td-meta"><span class="pn-td-kind">${n.leveled ? 'Technology' : KIND_LABEL[n.kind]}</span><span class="pn-td-lvl">${levelText}</span></div></div></div>`;
+    if (n.leveled) html += '<div class="pn-td-note">Upgrades every unit you own and every unit you build later.</div>';
+
+    // Current -> next values of what the next level changes.
+    const next = level < n.levels.length ? n.levels[level] : null;
+    if (next && next.effects.length) {
+      const get = (k: string) => p.stat(k);
+      const rows: string[] = [];
+      const seen = new Set<string>();
+      for (const e of next.effects) {
+        const lab = STAT_LABELS[e.stat];
+        if (!lab || seen.has(lab.label)) continue;
+        seen.add(lab.label);
+        const cur = p.stat(e.stat);
+        let nv = cur;
+        for (const x of next.effects) if (x.stat === e.stat) nv = x.op === 'set' ? x.value : x.op === 'mul' ? nv * x.value : nv + x.value;
+        const nextGet = (k: string) => (k === e.stat ? nv : get(k));
+        rows.push(`<tr><td>${escapeHTML(lab.label)}</td><td>${escapeHTML(lab.fmt(cur, get))}</td><td class="pn-td-arrow">→</td><td class="pn-td-new">${escapeHTML(lab.fmt(nv, nextGet))}</td></tr>`);
+      }
+      if (rows.length) html += `<table class="pn-td-stats"><tr><th></th><th>Now</th><th></th><th>Lv. ${displayLevel(n, level + 1)}</th></tr>${rows.join('')}</table>`;
+    }
+
     html += '<ul class="pn-td-levels">';
+    if (base) html += `<li class="is-done">${icon('check')}<span><b>Lv 1</b> Starting level.</span></li>`;
     n.levels.forEach((lvDef, i) => {
       const cls = i < level ? 'is-done' : i === level ? 'is-next' : 'is-later';
-      const tag = i < level ? icon('check') : `<span class="pn-td-cost">${icon('wp')}${fmtInt(lvDef.cost)}</span>`;
-      html += `<li class="${cls}">${tag}<span>${max > 1 ? `<b>Lv ${i + 1}</b> ` : ''}${escapeHTML(lvDef.desc)}</span></li>`;
+      const costs = `<span class="pn-td-cost">${icon('wp')}${fmtInt(lvDef.cost)}${lvDef.money > 0 ? ` <span class="pn-td-money">${fmtPrice(lvDef.money)}</span>` : ''}</span>`;
+      const tag = i < level ? icon('check') : costs;
+      html += `<li class="${cls}">${tag}<span>${n.levels.length > 1 || base ? `<b>Lv ${i + 1 + base}</b> ` : ''}${escapeHTML(lvDef.desc)}</span></li>`;
     });
     html += '</ul>';
     const unlocks = unlocksText(n);
     if (unlocks) html += `<div class="pn-td-unlocks">${icon('shop')}<span>${escapeHTML(unlocks)}</span></div>`;
-    if (n.requires.length) {
-      html += '<div class="pn-td-reqs"><div class="pn-td-sub">Requires</div>';
-      for (const r of n.requires) {
-        const rn = NODE_BY_ID.get(r);
+    const reqs = nextRequirements(n, level);
+    if (reqs.length) {
+      html += `<div class="pn-td-reqs"><div class="pn-td-sub">${level === 0 ? 'Requires' : `Lv. ${displayLevel(n, level + 1)} requires`}</div>`;
+      for (const r of reqs) {
+        const rn = NODE_BY_ID.get(parseRequirement(r)[0]);
         const ok = p.isUnlocked(r);
         const rc = rn ? BRANCH_COLOR.get(rn.branch) ?? '#888' : '#888';
-        html += `<div class="pn-td-req ${ok ? 'is-ok' : 'is-missing'}">${icon(ok ? 'check' : 'lock')}<i style="background:${rc}"></i><span>${escapeHTML(rn?.name ?? r)}</span></div>`;
+        html += `<div class="pn-td-req ${ok ? 'is-ok' : 'is-missing'}">${icon(ok ? 'check' : 'lock')}<i style="background:${rc}"></i><span>${escapeHTML(requirementLabel(r))}</span></div>`;
       }
       html += '</div>';
     }
     const chk = p.canUnlock(id);
-    const status = chk.ok ? 'Click to unlock' : chk.reason === 'Maxed' ? 'Fully upgraded' : chk.reason ?? '';
+    const verb = level === 0 && !base ? 'unlock' : `upgrade to Lv. ${displayLevel(n, level + 1)}`;
+    const status = chk.ok ? `Click to ${verb}` : chk.reason === 'Maxed' ? 'Fully upgraded' : chk.reason ?? '';
     html += `<div class="pn-td-status ${chk.ok ? 'is-ok' : chk.reason === 'Maxed' ? 'is-max' : 'is-no'}">${escapeHTML(status)}</div>`;
     this.detail.innerHTML = html;
     this.detail.style.setProperty('--bc', color);

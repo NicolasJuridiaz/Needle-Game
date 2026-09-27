@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { ModelInstance } from './api';
 import { cachedGeometry, cachedTemplate } from './cache';
-import { BH, C, lampMast, namePlate, ports, skid } from './kit';
+import { BH, C, lampMast, namePlate, ports, skid, tierKit } from './kit';
 import { additiveMaterial } from './materials';
 import { shade, type Parts, type V3 } from './parts';
 import { af, HIDDEN, RigModel, TemplateBuilder, type Template } from './rig';
@@ -120,6 +120,7 @@ function mk1Template(): Template {
   bones.fill = t.bone(0, [1.2, 0.2, 0.62]);
   r.cyl('glowAmber', 0.065, 0.065, 1.0, C.hay, { pos: [0, 0.5, 0], bone: bones.fill }, 8);
   BONES.set('scannerMk1', bones);
+  tierKit(t, 3, 2, { postH: 1.0 });
   t.cullRadius = 2.6; t.cullCentre = [0, 1, 0];
   return t.build();
 }

@@ -17,6 +17,7 @@ import { PowerNetwork } from './power';
 import { Progression } from './progression';
 import type { BuildingType, Cell, Rot, Vec3 } from './types';
 import { NEEDLE_COUNT } from '../config/needles';
+import { techForBuilding, techLevelView } from './levels';
 import { migrateSave, SAVE_VERSION, type SaveData } from './save';
 
 /** Max hay height (m) under a footprint that a new building can push aside. */
@@ -116,9 +117,18 @@ export class Sim implements SimContext {
     this.events.emit('hay:extracted', { amount, pos, source });
   }
 
+  /** Inspection info of a building, with its technology level (global per technology) first. */
   buildingInfo(id: number): BuildingInfo | null {
     const b = this.buildings.get(id);
-    return b ? b.info(this) : null;
+    if (!b) return null;
+    const info = b.info(this);
+    const tech = techForBuilding(b.type);
+    if (tech) {
+      const v = techLevelView(tech, this.progress.nodeLevel(tech.id));
+      info.lines.unshift({ label: 'Level', value: `Lv. ${v.level} / ${v.max}`, tone: v.level >= v.max ? 'good' : undefined });
+      if (v.next) info.lines.push({ label: `Next Lv. ${v.level + 1}`, value: v.next.length > 44 ? `${v.next.slice(0, 42)}…` : v.next });
+    }
+    return info;
   }
 
   /** A needle has been found by any means. Applies buff, rewards, completion. */
@@ -257,6 +267,7 @@ export class Sim implements SimContext {
     this.buildings.set(b.id, b);
     this.paid.set(b.id, paid);
     b.refreshPorts((n) => this.progress.isUnlocked(n));
+    this.applyTier(b);
     b.onPlaced(this);
     const st = this.progress.stats;
     if (LOGISTICS_TYPES.has(type)) st.beltsBuilt++;
@@ -375,7 +386,16 @@ export class Sim implements SimContext {
   }
 
   /** Called after a tech unlock: ports may appear (dual outputs, auto feed...), stats change. */
-  onTechChanged(): void { this.topologyDirty = true; }
+  onTechChanged(): void {
+    this.topologyDirty = true;
+    for (const b of this.buildings.values()) this.applyTier(b);
+  }
+
+  /** Writes the building's technology level into `anim.tier` (models add upgrade kits from Lv.3). */
+  private applyTier(b: Building): void {
+    const tech = techForBuilding(b.type);
+    if (tech) (b.anim as Record<string, number>).tier = techLevelView(tech, this.progress.nodeLevel(tech.id)).level;
+  }
 
   // ===================================================================================
   // Lookup helpers

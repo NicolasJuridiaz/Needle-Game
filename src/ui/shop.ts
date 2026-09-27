@@ -1,6 +1,7 @@
 import { BALANCE } from '../config/balance';
 import { BUILDABLES, type BuildableDef } from '../config/buildables';
 import { requirementLabel } from '../config/techTree';
+import { techForBuilding, techLevelView } from '../sim/levels';
 import { TOOLS, WHEELBARROW } from '../config/tools';
 import type { BuildCategory, BuildingType, ToolId } from '../sim/types';
 import { ClassSlot, h, TextSlot } from './dom';
@@ -175,7 +176,9 @@ export class Shop extends Panel {
   private refresh(): void {
     const sim = this.env.ctx.sim;
     const p = sim.progress;
-    const sig = `${Math.floor(p.money)}|${p.nodes.size}|${p.ownedTools.size}|${p.hasWheelbarrow}|${sim.buildings.size}|${this.tab}`;
+    let levels = 0;
+    for (const v of p.nodes.values()) levels += v;
+    const sig = `${Math.floor(p.money)}|${levels}|${p.ownedTools.size}|${p.hasWheelbarrow}|${sim.buildings.size}|${this.tab}`;
     if (sig === this.sig) return;
     this.sig = sig;
     this.moneyText.set(fmtMoney(p.money));
@@ -210,7 +213,9 @@ export class Shop extends Panel {
         lockName = d.requiresNode ? requirementLabel(d.requiresNode) : '';
         c.price.set(cost > 0 ? fmtPrice(cost) : 'Free');
         c.priceBad.set(!afford);
-        c.owned.set(count > 0 ? `x${fmtInt(count)}` : unlocked ? 'New' : '');
+        const tech = unlocked ? techForBuilding(d.id) : null;
+        const lv = tech ? ` · Lv ${techLevelView(tech, p.nodeLevel(tech.id)).level}` : '';
+        c.owned.set(count > 0 ? `x${fmtInt(count)}${lv}` : unlocked ? `New${lv}` : '');
         c.owned.el.classList.toggle('is-new', count === 0 && unlocked);
         if (unlocked && count === 0) dots.set(d.category, true);
         if (c.thr) c.thr.set(liveThroughput(d.id, stat, d.throughputLabel));

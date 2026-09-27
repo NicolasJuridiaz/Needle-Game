@@ -1,7 +1,7 @@
 import { COLORS } from '../palette';
 import type { ModelInstance } from './api';
 import { cachedTemplate } from './cache';
-import { BH, C, hayMound, lampMast, namePlate, ports, skid } from './kit';
+import { BH, C, hayMound, lampMast, namePlate, ports, skid, tierKit } from './kit';
 import { shade, type Parts } from './parts';
 import { af, HIDDEN, RigModel, TemplateBuilder, type Template } from './rig';
 
@@ -90,6 +90,7 @@ function compressorTemplate(): Template {
   r.cyl('paint', 0.2, 0.2, 0.5, C.steelDark, { pos: [CP.x, 2.1, 0.5], bone: ch2 }, 12);
   r.cyl('metal', 0.16, 0.16, 0.14, C.frame, { pos: [CP.x, 2.71, 0.5], bone: ch2 }, 12);
   ram(ch2, 0.5);
+  tierKit(t, 3, 2, { postH: 1.0 });
   t.cullRadius = 2.4; t.cullCentre = [0, 1.3, 0];
   return t.build();
 }

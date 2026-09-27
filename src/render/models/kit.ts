@@ -299,3 +299,28 @@ export class HoseLayout {
     }
   }
 }
+
+/**
+ * Lv.3 upgrade kit, skinned to its own bone (shown from technology Lv.3, see RigModel.update): steel armour
+ * plates with hazard stripes along both long sides and two amber beacon posts on opposite corners.
+ * Rigged into the model's existing meshes: more triangles, no extra draw call.
+ */
+export function tierKit(t: { r: Parts; bone(parent: number, pos?: V3): number; tierBone?: number }, w: number, d: number, opts: { plateY?: number; postH?: number } = {}): void {
+  const bone = t.bone(0);
+  t.tierBone = bone;
+  const r = t.r;
+  const hx = w / 2, hz = d / 2;
+  const py = opts.plateY ?? 0.36;
+  for (const s of [-1, 1]) {
+    r.bev('metal', [w * 0.62, 0.34, 0.04], 0.012, COLORS.steelDark, { pos: [0, py, s * (hz + 0.025)], bone });
+    r.hazard(w * 0.62 - 0.1, 0.09, { pos: [0, py + 0.11, s * (hz + 0.047)], normal: [0, 0, s], bone });
+    r.bolts([-w * 0.27, py - 0.1, s * (hz + 0.047)], [w * 0.27, py - 0.1, s * (hz + 0.047)], 4, [0, 0, s], 0.018, 0xb9c0c4, bone);
+  }
+  const h = opts.postH ?? 0.8;
+  for (const [sx, sz] of [[1, 1], [-1, -1]] as const) {
+    const x = sx * (hx - 0.14), z = sz * (hz + 0.06);
+    r.cyl('metal', 0.028, 0.034, h, COLORS.steelDark, { pos: [x, 0.12 + h / 2, z], bone }, 8);
+    r.cyl('paint', 0.07, 0.075, 0.05, 0x1d1d1d, { pos: [x, 0.12 + h + 0.025, z], bone }, 12);
+    r.sphere('paint', 0.065, 0xffa51f, { pos: [x, 0.12 + h + 0.05, z], bone }, 10, 6, Math.PI / 2);
+  }
+}

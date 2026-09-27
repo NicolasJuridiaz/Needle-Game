@@ -1,6 +1,6 @@
 import type { ModelInstance } from './api';
 import { cachedTemplate } from './cache';
-import { C, hayMound, hoseGeometry, HoseLayout, lampMast, namePlate, ports, skid } from './kit';
+import { C, hayMound, hoseGeometry, HoseLayout, lampMast, namePlate, ports, skid, tierKit } from './kit';
 import { shade, wedge, type V3 } from './parts';
 import { af, ease, HIDDEN, RigModel, TemplateBuilder, type Template } from './rig';
 
@@ -167,6 +167,7 @@ function rakeTemplate(): Template {
     r.bev('paint', [0.1, RK.drop - 0.1, 0.12], 0.02, C.steelDark, { pos: [0.06, -RK.drop / 2 - 0.02, s * 0.62], bone: headInd });
     r.box('metal', [0.1, 0.1, 0.62], C.steelDark, { pos: [0, 0, s * 0.31], bone: headInd });
   }
+  tierKit(t, 2, 3, { postH: 1.1 });
   t.cullRadius = 6.5; t.cullCentre = [2.5, 1.2, 0];
   return t.build();
 }
@@ -264,6 +265,7 @@ function armTemplate(): Template {
   }
   r.add('decal', hayMound(1, 1, 0.8, 5, 33, true), 0xffffff, { pos: [0, -0.12, 0], scale: [0.22, 0.3, 0.22], bone: hay });
   r.sphere('matte', 0.1, C.hay, { bone: hay }, 7, 5);
+  tierKit(t, 1, 1, { plateY: 0.3, postH: 0.6 });
   t.cullRadius = 5; t.cullCentre = [0, 1.5, 0];
   return t.build();
 }
@@ -405,6 +407,7 @@ function collectorTemplate(): Template {
   const start = t.bones.length;
   for (let i = 0; i < VAC.rings; i++) t.bone(0);
   r.add('matte', hoseGeometry(VAC.rings, 0.12, start, 10), 0x2e2e2e);
+  tierKit(t, 3, 3, { postH: 1.2 });
   t.cullRadius = 7.5; t.cullCentre = [1.5, 1.2, 0];
   return t.build();
 }

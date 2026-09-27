@@ -6,6 +6,9 @@
  * Angles are radians in the building's LOCAL frame (0 = local forward = +X of the model),
  * positive = counter-clockwise seen from above (three.js convention around +Y).
  * Distances are metres in the local frame. Unless stated otherwise, 0..1 values are normalised.
+ *
+ * Every building that follows a Level-system technology also carries `tier` (1..5, written by the Sim on
+ * placement and on every tech change): models show their Lv.3 upgrade kit from tier 3.
  */
 export interface AnimFields {
   sellStation: { pulse: number /* 0..1, jumps to 1 on each sale then decays */ };

@@ -27,7 +27,7 @@ export const STATUS_META: Record<MachineStatus, { label: string; tone: StatusTon
 /** Buildable lookup by display name (BuildingInfo only carries the title). */
 const DEF_BY_NAME = new Map(Object.values(BUILDABLES).map((d) => [d.name, d]));
 
-const MAX_LINES = 8;
+const MAX_LINES = 10;
 
 interface LineEl { row: HTMLElement; label: TextSlot; value: TextSlot; tone: string }
 

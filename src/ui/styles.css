@@ -1265,3 +1265,21 @@
 @media (prefers-reduced-motion: reduce) {
   .pn-ui *, .pn-ui *::before, .pn-ui *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ----- RC2 Level system: technology level chip, money cost, Now -> Next table ----- */
+.pn-tn-lv { font-size: clamp(8px, calc(var(--u) * 0.62), 11px); font-weight: 900; letter-spacing: 0.04em; color: var(--ink-3); padding: 0.05em 0.45em; border-radius: 1em; background: rgba(0, 0, 0, 0.35); font-variant-numeric: tabular-nums; }
+.pn-tn.has-lv .pn-tn-lv { color: var(--bc); }
+.pn-tn.is-maxed .pn-tn-lv { color: #13280b; background: var(--bc); }
+.pn-tn-money { position: absolute; bottom: -0.6em; right: -0.45em; height: 1.55em; padding: 0 0.45em; display: flex; align-items: center; border-radius: 1em; font-size: clamp(8px, calc(var(--u) * 0.66), 11px); font-weight: 900; color: #ffe08a; background: #2a241d; border: 1px solid rgba(255, 224, 138, 0.35); box-shadow: 0 0.15em 0.35em rgba(0, 0, 0, 0.45); font-variant-numeric: tabular-nums; }
+.pn-tn-money:empty { display: none; }
+.pn-tn.is-poor .pn-tn-money { color: #ff9d90; border-color: rgba(255, 157, 144, 0.4); }
+.pn-tn.is-ready .pn-tn-money { color: #13280b; background: #ffe08a; border-color: transparent; }
+.pn-td-note { font-size: calc(var(--u) * 0.72); color: var(--ink-3); margin: 0 0 0.45em; font-style: italic; }
+.pn-td-lvl { font-weight: 900; color: var(--bc); }
+.pn-td-money { color: #ffe08a; margin-left: 0.25em; }
+.pn-td-stats { width: 100%; border-collapse: collapse; margin: 0 0 0.55em; font-size: calc(var(--u) * 0.8); font-variant-numeric: tabular-nums; }
+.pn-td-stats th { text-align: left; font-size: 0.85em; color: var(--ink-3); font-weight: 800; padding: 0 0.3em 0.2em; }
+.pn-td-stats td { padding: 0.18em 0.3em; border-top: 1px solid rgba(255, 238, 205, 0.07); }
+.pn-td-stats td:first-child { color: var(--ink-2); }
+.pn-td-stats .pn-td-arrow { color: var(--ink-3); width: 1em; }
+.pn-td-stats .pn-td-new { color: var(--good); font-weight: 900; }

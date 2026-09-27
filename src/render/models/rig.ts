@@ -28,6 +28,8 @@ export interface Template {
   /** Culling sphere for the skinned mesh (model space). */
   cull: THREE.Sphere;
   lamp?: LampSpec;
+  /** Bone of the Lv.3 upgrade kit (shown while anim.tier >= 3). */
+  tierBone?: number;
 }
 
 /** Scale used to hide a bone's parts. */
@@ -43,6 +45,8 @@ export class TemplateBuilder {
   /** Explicit culling radius around `cullCentre` (defaults to the static bounds, generously padded). */
   cullRadius?: number;
   cullCentre?: V3;
+  /** Bone of the Lv.3 upgrade kit (see kit.ts tierKit). */
+  tierBone?: number;
 
   /** Adds a bone (index returned). Bone 0 is the model root. */
   bone(parent: number, pos: V3 = [0, 0, 0], rot: V3 = [0, 0, 0]): number {
@@ -61,7 +65,7 @@ export class TemplateBuilder {
       const bs = st.main?.boundingSphere ?? new THREE.Sphere(new THREE.Vector3(0, 1, 0), 1);
       cull = new THREE.Sphere(bs.center.clone(), bs.radius * 1.25 + 0.5);
     }
-    return { main: st.main, glass: st.glass, rigMain: rg.main, rigGlass: rg.glass, bones: this.bones, cull, lamp: this.lamp };
+    return { main: st.main, glass: st.glass, rigMain: rg.main, rigGlass: rg.glass, bones: this.bones, cull, lamp: this.lamp, tierBone: this.tierBone };
   }
 }
 
@@ -131,12 +135,18 @@ export abstract class RigModel implements ModelInstance {
   readonly root: THREE.Object3D;
   protected readonly rig: RigInstance;
 
+  private readonly tierBone: number | undefined;
+
   constructor(t: Template, name: string) {
     this.rig = new RigInstance(t, name);
     this.root = this.rig.root;
+    this.tierBone = t.tierBone;
+    if (this.tierBone !== undefined) this.rig.show(this.tierBone, false);
   }
 
   update(anim: Record<string, number>, dt: number, time: number): void {
+    // Technology level (global per technology, written by the sim): Lv.3+ adds the upgrade kit.
+    if (this.tierBone !== undefined) this.rig.show(this.tierBone, (anim.tier ?? 0) >= 3);
     this.animate(anim, dt, time);
     this.rig.lamp?.update(dt, time);
   }
