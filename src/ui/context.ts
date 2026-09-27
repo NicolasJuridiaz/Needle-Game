@@ -3,6 +3,7 @@ import type { DetectorReading } from '../sim/interfaces';
 import type { Sim } from '../sim/sim';
 import type { BuildingType, SplitterMode, ToolId } from '../sim/types';
 import type { Settings } from '../game/settings';
+import type { WelcomeBackInfo } from '../game/welcomeBack';
 
 /**
  * UI CONTRACT. The game (src/game/game.ts) implements UIContext; the UI (src/ui/*) renders DOM from it.
@@ -86,4 +87,8 @@ export interface UIContext {
   getHint(): { text: string; key?: string } | null;
   /** Is the game running on a touch-only device (unsupported notice). */
   isTouchOnly(): boolean;
+  /** Welcome Back card after a real absence (read-only), null otherwise. Optional for test doubles. */
+  getWelcomeBack?(): WelcomeBackInfo | null;
+  /** Analytics notice on the title screen (CrazyGames "User Consent"), null when nothing is sent remotely. */
+  getPrivacyNotice?(): { policyUrl: string | null } | null;
 }

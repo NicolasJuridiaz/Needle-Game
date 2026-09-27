@@ -1,4 +1,4 @@
-import { Analytics } from './platform/analytics';
+import { createAnalyticsService } from './platform/analyticsConfig';
 import { Platform } from './platform/crazygames';
 import { Game } from './game/game';
 
@@ -16,7 +16,9 @@ async function boot(): Promise<void> {
   platform.loadingStart();
   setBar(0.4);
 
-  const analytics = new Analytics();
+  // Analytics: remote adapter (ByteBrew) only when configured; the Game applies the player's opt-out and that
+  // starts the adapter in the background (it never blocks the boot).
+  const analytics = createAnalyticsService({ enabled: false });
   const container = document.getElementById('game')!;
   const uiRoot = document.getElementById('ui')!;
 
@@ -28,6 +30,7 @@ async function boot(): Promise<void> {
   game.ready();
   game.start();
   (window as unknown as { __game?: Game }).__game = game;
+  installAnalyticsDebug(analytics);
 
   const boot = document.getElementById('boot');
   if (boot) {
@@ -35,6 +38,22 @@ async function boot(): Promise<void> {
     boot.style.opacity = '0';
     setTimeout(() => boot.remove(), 400);
   }
+}
+
+/**
+ * QA handle for analytics (dev builds, or any build with ?debug=1): `__pnAnalyticsQA.status()` shows the active
+ * adapter, init state and last events sent; `test()` sends one `qa_test_event`. Nothing visible on screen.
+ */
+function installAnalyticsDebug(analytics: ReturnType<typeof createAnalyticsService>): void {
+  let debug = import.meta.env.DEV;
+  try { debug ||= new URLSearchParams(location.search).get('debug') === '1'; } catch { /* ignore */ }
+  if (!debug) return;
+  (window as unknown as { __pnAnalyticsQA?: unknown }).__pnAnalyticsQA = {
+    status: () => analytics.diagnostics(),
+    test: () => { analytics.track('qa_test_event', { source: 'console' }); return analytics.diagnostics(); },
+    setEnabled: (on: boolean) => analytics.setEnabled(on),
+  };
+  console.info('[analytics] QA handle: __pnAnalyticsQA.status() / .test() / .setEnabled(bool); buffer: __pnAnalytics.events()');
 }
 
 /** True when the browser can create a WebGL context (hardware acceleration may be off or blocklisted). */

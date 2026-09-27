@@ -65,6 +65,9 @@ export class SettingsPanel {
       this.quality.push(b);
     }
     this.toggle(display, { key: 'showFps', label: 'Show FPS counter' });
+
+    const privacy = this.group('Privacy');
+    this.toggle(privacy, { key: 'shareAnalytics', label: 'Share anonymous gameplay statistics', desc: 'Progress and performance only, no personal data' });
   }
 
   private group(title: string): HTMLElement {

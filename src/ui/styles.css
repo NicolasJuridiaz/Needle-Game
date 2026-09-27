@@ -1283,3 +1283,16 @@
 .pn-td-stats td:first-child { color: var(--ink-2); }
 .pn-td-stats .pn-td-arrow { color: var(--ink-3); width: 1em; }
 .pn-td-stats .pn-td-new { color: var(--good); font-weight: 900; }
+
+/* ----- Welcome Back card (P0 Basic Launch): read-only summary on the click-to-play screen ----- */
+.pn-wb { display: none; min-width: 22em; max-width: 30em; padding: 0.9em 1.2em; border-radius: var(--r-lg); background: rgba(18, 14, 9, 0.88); border: 1px solid var(--line); box-shadow: 0 0.6em 2em rgba(0, 0, 0, 0.5); font-size: calc(var(--u) * 0.9); color: var(--ink-2); }
+.pn-wb.is-on { display: block; }
+.pn-wb-title { font-size: calc(var(--u) * 1.35); font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; color: var(--hay); }
+.pn-wb-sub { margin: 0.15em 0 0.6em; color: var(--ink-3, var(--ink-2)); font-weight: 600; }
+.pn-wb-row { display: flex; justify-content: space-between; gap: 1.5em; padding: 0.28em 0; border-top: 1px solid var(--line-2); }
+.pn-wb-row span { color: var(--ink-2); }
+.pn-wb-row b { color: #fff3d0; text-align: right; font-weight: 700; }
+/* Analytics notice (CrazyGames "User Consent": simple notice, not a blocking pop-up). The overlay is click-through; only the link takes clicks. */
+.pn-ctp-privacy { max-width: 40em; font-size: calc(var(--u) * 0.72); color: var(--ink-3); text-align: center; text-shadow: 0 1px 3px #000; }
+.pn-ctp-privacy:empty { display: none; }
+.pn-ctp-privacy a { pointer-events: auto; color: var(--hay); text-decoration: underline; }

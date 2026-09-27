@@ -7,8 +7,9 @@ import { TOOLS } from '../config/tools';
 import { WORLD } from '../config/world';
 import { AudioEngine } from '../audio/audioEngine';
 import type { LoopId, SfxId } from '../audio/api';
-import type { Analytics } from '../platform/analytics';
-import type { Platform } from '../platform/crazygames';
+import { appVersion, privacyPolicyUrl, urlOptOut } from '../platform/analyticsConfig';
+import type { AnalyticsService } from '../platform/analyticsService';
+import { analyticsPlatform, type PlatformService } from '../platform/platformService';
 import { trackRunProgress } from '../platform/progress';
 import { Renderer } from '../render/renderer';
 import { Environment } from '../render/environment';
@@ -39,7 +40,10 @@ import { Hints, type Hint } from './hints';
 import { Input } from './input';
 import { Interaction, type Aim } from './interaction';
 import { PlayerController } from './playerController';
+import { loadProfile, saveProfile, type PlayerProfile } from './profile';
 import { SaveManager, type GameMeta } from './saveManager';
+import { GameTelemetry } from './telemetry';
+import { welcomeBackInfo, type WelcomeBackInfo } from './welcomeBack';
 import type { Settings } from './settings';
 import { Waypoint } from './waypoint';
 
@@ -92,6 +96,11 @@ export class Game implements UIContext {
   private audio: AudioEngine;
   private saves: SaveManager;
   private meta: GameMeta = { hintsDone: [], continuedAfterCompletion: false };
+  private readonly profile: PlayerProfile;
+  private readonly telemetry: GameTelemetry;
+  /** Welcome Back card data (null = not shown); cleared when the player clicks in. */
+  private welcome: WelcomeBackInfo | null = null;
+  private readonly analyticsOptOut: boolean;
 
   private mode: GameMode = 'loading';
   private readonly fixed: FixedStepState = { accumulator: 0 };
@@ -130,11 +139,19 @@ export class Game implements UIContext {
   constructor(
     private readonly container: HTMLElement,
     private readonly uiRoot: HTMLElement,
-    private readonly platform: Platform,
-    private readonly analytics: Analytics,
+    private readonly platform: PlatformService,
+    private readonly analytics: AnalyticsService,
   ) {
     this.saves = new SaveManager(platform.storage);
     this.settings = this.saves.loadSettings();
+    // Analytics opt-out: Settings > Privacy, or ?analytics=0 for this page load. Enabling starts the remote adapter.
+    this.analyticsOptOut = urlOptOut(typeof location === 'undefined' ? '' : location.search);
+    analytics.setEnabled(this.settings.shareAnalytics && !this.analyticsOptOut);
+    this.profile = loadProfile(platform.storage, Date.now());
+    this.telemetry = new GameTelemetry({
+      analytics, profile: this.profile, version: appVersion(), platform: () => analyticsPlatform(platform),
+      perf: () => { const r = this.renderer.stats(); return { quality: this.settings.quality, drawCalls: r.drawCalls, triangles: r.triangles, deviceClass: platform.deviceClass }; },
+    });
     this.renderer = new Renderer(container, this.settings.quality);
     this.renderer.camera.rotation.order = 'YXZ';
     this.renderer.setFov(this.settings.fov);
@@ -151,9 +168,18 @@ export class Game implements UIContext {
     platform.onMuteChange((m) => this.audio.setPlatformMuted(m));
     this.actions = this.makeActions();
 
+    const hadSave = this.saves.hasSave();
     const loaded = this.saves.load();
-    if (loaded) { this.meta = loaded.meta; this.bindSim(loaded.sim); }
-    else this.bindSim(new Sim(this.newSeed()));
+    this.telemetry.sessionStart({ hasSave: hadSave, activeRun: !!loaded && !loaded.sim.completed, saveVersion: this.saves.loadedSaveVersion });
+    if (hadSave && !loaded) this.telemetry.error('save_corrupt', 'save', true);
+    if (loaded) {
+      this.meta = loaded.meta;
+      this.bindSim(loaded.sim, false);
+      this.welcome = welcomeBackInfo(loaded.sim, this.saves.lastSavedAt, Date.now());
+      if (this.welcome) this.telemetry.onWelcomeBack(this.welcome);
+    } else this.bindSim(new Sim(this.newSeed()), true);
+    saveProfile(platform.storage, this.profile);
+    this.installErrorTelemetry();
 
     this.renderer.domElement.addEventListener('click', () => {
       if (this.mode === 'clickToPlay') this.startPlaying();
@@ -165,9 +191,16 @@ export class Game implements UIContext {
     window.addEventListener('pagehide', () => {
       this.saveGame(true);
       this.analytics.track('quit_state', this.quitState());
-      this.analytics.trackSessionEnd();
+      this.analytics.local.trackSessionEnd();
     });
-    this.analytics.track('game_loaded', { hasSave: !!loaded });
+  }
+
+  /** Serious runtime errors -> `game_error` (code + system only, deduplicated; see GameTelemetry.error). */
+  private installErrorTelemetry(): void {
+    if (typeof window === 'undefined') return;
+    window.addEventListener('error', () => this.telemetry.error('uncaught_error', 'runtime', true));
+    window.addEventListener('unhandledrejection', () => this.telemetry.error('unhandled_rejection', 'runtime', true));
+    this.renderer.domElement.addEventListener('webglcontextlost', () => this.telemetry.error('webgl_context_lost', 'render', false));
   }
 
   private newSeed(): number { return (Math.random() * 0xffffffff) >>> 0; }
@@ -176,9 +209,10 @@ export class Game implements UIContext {
   // Sim binding
   // =====================================================================================
 
-  private bindSim(sim: Sim): void {
+  private bindSim(sim: Sim, isNewGame: boolean): void {
     this.unbindSim();
     this.sim = sim;
+    this.meta.telemetry = this.telemetry.attachRun(sim, isNewGame ? undefined : this.meta.telemetry, isNewGame);
     const scene = this.renderer.scene;
     const q = this.settings.quality;
     this.hayView = new HayView(scene, sim.hay, q);
@@ -231,30 +265,15 @@ export class Game implements UIContext {
     const topo = () => { this.topologyVersion++; };
     on('building:placed', (e) => {
       topo();
-      if (e.type !== 'sellStation') {
-        if (!LOGISTICS_TYPES.has(e.type) && e.type !== 'platform' && e.type !== 'stairs' && e.type !== 'powerPole') this.analytics.once('first_machine', { type: e.type });
-        if (e.type === 'conveyor') this.analytics.once('first_conveyor');
-        if (e.type === 'roboticArm') this.analytics.once('first_arm');
-        if (e.type === 'scannerMk1' || e.type === 'scannerMk2') this.analytics.once('first_scanner');
-        const machines = this.sim.progress.stats.machinesBuilt;
-        if (machines === 10 || machines === 25) this.analytics.once(`factory_${machines}_machines`);
-      }
     });
     on('building:removed', topo);
     on('building:moved', topo);
     on('node:unlocked', (e) => {
       topo();
-      this.analytics.track('work_node_unlocked', { id: e.id, level: e.level });
-      this.analytics.once('first_upgrade', { id: e.id });
       if (e.id === 'f_expansion') { this.env.setAnnexOpen(true); this.audio.play('complete', { volume: 0.5 }); }
     });
     on('sale', (e) => {
-      this.analytics.once('first_sale');
       if (!e.viaBelt || near(e.pos, 25)) this.audio.play(e.value >= 500 ? 'sellBig' : 'sell', { pos: e.pos, volume: e.viaBelt ? 0.35 : 1 });
-    });
-    on('hay:extracted', (e) => {
-      if (e.source === 'manual' || e.source === 'vacuumTool') this.analytics.once('first_hay');
-      else this.analytics.once('first_automation', { source: e.source });
     });
     on('tool:bought', (e) => {
       this.audio.play('buy');
@@ -263,7 +282,6 @@ export class Game implements UIContext {
     });
     on('order:completed', (e) => {
       this.audio.play('orderComplete');
-      this.analytics.track('order_completed', { id: e.id, t: Math.round(this.sim.time) });
       this.refreshOrderBoard();
     });
     on('order:available', () => this.refreshOrderBoard());
@@ -271,8 +289,6 @@ export class Game implements UIContext {
     on('needle:found', (e) => {
       this.audio.play('needleFound');
       this.env.setNeedleSlots(this.sim.progress.needlesFound.length);
-      this.analytics.once('first_needle', { by: e.by, t: Math.round(this.sim.time) });
-      this.analytics.track('needle_found', { index: e.index + 1, by: e.by, t: Math.round(this.sim.time), progress: +this.sim.hay.progress().toFixed(3) });
       this.platform.happytime();
       this.saveGame(true);
     });
@@ -289,7 +305,6 @@ export class Game implements UIContext {
     on('game:completed', (e) => {
       this.audio.play('complete');
       this.platform.happytime();
-      this.analytics.track('game_completed', { minutes: +(e.time / 60).toFixed(1) });
       this.saveGame(true);
       if (!this.meta.continuedAfterCompletion) this.summaryTimer = 4;
     });
@@ -319,7 +334,7 @@ export class Game implements UIContext {
     if (!GAMEPLAY_MODES.has(m) && wasGameplay) this.platform.gameplayStop();
     if (m !== 'build' && this.build?.active) this.build.exit();
     if (m === 'workTree') this.flags.add('workTreeOpened');
-    if (m === 'workTree') this.analytics.once('work_tree_opened');
+    this.telemetry.onMode(m);
     if (m === 'orders') this.flags.add('ordersOpened');
     if (m === 'paused') { this.saveGame(true); this.audio.setPaused(true); }
     else if (prev === 'paused') this.audio.setPaused(false);
@@ -330,7 +345,9 @@ export class Game implements UIContext {
   private startPlaying(): void {
     this.audio.unlock();
     this.input.requestLock();
-    if (!this.flags.has('started')) { this.flags.add('started'); this.analytics.once('game_start'); }
+    if (!this.flags.has('started')) this.flags.add('started');
+    this.telemetry.onPlayerStart();
+    this.welcome = null;
     this.setMode('play');
   }
 
@@ -376,6 +393,7 @@ export class Game implements UIContext {
     this.fpsTime += rawDt; // real frame time: the clamped dt would report >= 10 FPS on a 2 FPS machine
     if (this.fpsTime >= 0.5) { this.fps = this.frameCount / this.fpsTime; this.frameCount = 0; this.fpsTime = 0; }
     this.checkFrameRate(rawDt);
+    this.telemetry.frame(rawDt, GAMEPLAY_MODES.has(this.mode) && !document.hidden);
 
     this.handleGlobalKeys();
 
@@ -648,10 +666,14 @@ export class Game implements UIContext {
   saveGame(auto: boolean): void {
     if (!this.sim || this.mode === 'loading') return;
     this.meta.hintsDone = this.hints?.doneIds() ?? this.meta.hintsDone;
+    this.meta.telemetry = this.telemetry.state();
     if (this.saves.save(this.sim, this.meta)) this.sim.events.emit('game:saved', { auto });
+    else this.telemetry.error('save_failed', 'save', true);
+    this.telemetry.touch();
+    saveProfile(this.platform.storage, this.profile);
   }
 
-  private quitState(): Record<string, unknown> {
+  private quitState(): Record<string, string | number> {
     const s = this.sim;
     return {
       minutes: +(s.time / 60).toFixed(1), needles: s.progress.needlesFound.length, pile: +(s.hay.progress() * 100).toFixed(1),
@@ -674,6 +696,10 @@ export class Game implements UIContext {
   keyLabel(code: string): string { return this.input.label(code); }
   getHint(): { text: string; key?: string } | null { return this.hint ? { text: this.hint.text, key: this.hint.key } : null; }
   isTouchOnly(): boolean { return this.platform.isTouchOnlyDevice(); }
+  getWelcomeBack(): WelcomeBackInfo | null { return this.welcome; }
+  getPrivacyNotice(): { policyUrl: string | null } | null {
+    return this.analytics.hasRemote() && this.analytics.isEnabled() ? { policyUrl: privacyPolicyUrl() } : null;
+  }
   /** Settings panel: the selected quality only fully applies after a reload (anti-aliasing). */
   graphicsReloadRequired(): boolean { return this.renderer.needsReloadFor(this.settings.quality); }
   get lastSavedAt(): number { return this.saves.lastSavedAt; }
@@ -703,7 +729,9 @@ export class Game implements UIContext {
       newGame: () => {
         this.saves.clear();
         this.meta = { hintsDone: this.hints?.doneIds() ?? [], continuedAfterCompletion: false };
-        this.bindSim(new Sim(this.newSeed()));
+        this.welcome = null;
+        this.bindSim(new Sim(this.newSeed()), true);
+        saveProfile(this.platform.storage, this.profile);
         this.setMode('clickToPlay');
       },
       continueAfterCompletion: () => { this.meta.continuedAfterCompletion = true; this.backToPlay(false); },
@@ -746,6 +774,7 @@ export class Game implements UIContext {
       this.particles.setQuality(q);
       this.wires.setQuality(q);
     }
+    if (patch.shareAnalytics !== undefined) this.analytics.setEnabled(this.settings.shareAnalytics && !this.analyticsOptOut);
     this.saves.saveSettings(this.settings);
   }
 

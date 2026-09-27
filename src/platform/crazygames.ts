@@ -1,5 +1,5 @@
 import { DiagnosticLog } from './log';
-import type { ProgressSink } from './progress';
+import type { PlatformService } from './platformService';
 import type { CrazyGameSettings, CrazyGamesSDK, CrazySettingsListener } from './sdk';
 import { PlatformStorage, type Storage } from './storage';
 
@@ -31,7 +31,7 @@ function nowMs(): number {
  * and storage uses localStorage. Nothing here ever throws into the game, and a broken SDK prints at most
  * one console notice per page (see DiagnosticLog; the rest is kept in `diagnostics`).
  */
-export class Platform implements ProgressSink {
+export class Platform implements PlatformService {
   readonly storage: Storage;
   /** Why the SDK is not active (null when it is), for diagnostics. */
   initError: string | null = null;
@@ -59,6 +59,15 @@ export class Platform implements ProgressSink {
   get isMuted(): boolean { return this.muted; }
   /** True when the real SDK is active (environment 'crazygames' or 'local'). */
   get sdkActive(): boolean { return this.sdk !== null; }
+  /** Device type reported by the SDK (`user.systemInfo.device.type`), 'unknown' without SDK. */
+  get deviceClass(): string {
+    try {
+      const t = this.sdk?.user?.systemInfo?.device?.type;
+      return typeof t === 'string' && /^[a-z]{1,16}$/.test(t) ? t : 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }
   /** Recorded platform / storage notices (only the first one is printed to the console). */
   get diagnostics(): readonly string[] { return this.log.entries; }
 
