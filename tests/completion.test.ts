@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../src/config/balance';
 import { NEEDLE_BUFFS, NEEDLE_COUNT } from '../src/config/needles';
-import { TECH_NODES } from '../src/config/techTree';
+import { maxDisplayLevel, TECH_NODES } from '../src/config/techTree';
 import type { Building } from '../src/sim/building';
 import { pickupNeedle } from '../src/sim/playerActions';
 import { Sim } from '../src/sim/sim';
@@ -51,7 +51,7 @@ function service(sim: Sim, line: Line): void {
 function setup(seed: number): { sim: Sim; line: Line } {
   const sim = new Sim(seed);
   parkPlayer(sim);
-  unlock(sim, TECH_NODES.map((n) => n.id));
+  unlock(sim, TECH_NODES.map((n) => `${n.id}@${maxDisplayLevel(n)}`));
   rich(sim);
   const line = buildLine(sim);
   run(sim, 25, (s) => service(s, line));

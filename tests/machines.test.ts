@@ -15,6 +15,7 @@ import type { SimContext } from '../src/sim/interfaces';
 import { MACHINE_CLASSES } from '../src/sim/machines/index';
 import { Sim } from '../src/sim/sim';
 import { oppositeDir, type BuildingType, type Cell, type ItemPacket, type Rot, type WorldPort } from '../src/sim/types';
+import { unlock } from './support/simKit';
 
 const DT = BALANCE.tickDt;
 
@@ -57,16 +58,6 @@ function installDirectLinks(sim: Sim): void {
   };
 }
 
-function unlock(sim: Sim, ids: string[]): void {
-  sim.progress.addWP(10_000, 'milestone');
-  const byId = new Map(TECH_NODES.map((n) => [n.id, n]));
-  const want = new Set<string>();
-  const add = (id: string) => { if (want.has(id)) return; want.add(id); for (const r of byId.get(id)!.requires) add(r); };
-  ids.forEach(add);
-  for (let pass = 0; pass < 20; pass++) for (const id of want) while (sim.progress.canUnlock(id).ok) sim.progress.unlock(id);
-  for (const id of ids) expect(sim.progress.isUnlocked(id), `unlock ${id}`).toBe(true);
-  sim.rebuildTopology();
-}
 
 function newSim(seed: number, nodes: string[]): Sim {
   const sim = new Sim(seed);
@@ -330,7 +321,7 @@ describe('power', () => {
 
   it('overload -> satisfaction < 1 and machines slow down proportionally (no shutdown)', () => {
     const produced = (extraDraw: number): { bales: number; sat: number } => {
-      const sim = newSim(22, ['e_compressor', 'f_generator', 'f_firebox']);
+      const sim = newSim(22, ['e_compressor', 'f_generator', 'f_generator@2']);
       const gen = place(sim, 'hayGenerator', -24, -16, 0);
       fuel(sim, gen, 500);
       const comp = place(sim, 'compressor', -22, -12, 0);
@@ -346,8 +337,8 @@ describe('power', () => {
       return { bales, sat: comp.powerSatisfaction };
     };
     const full = produced(0);
-    // supply 54 P; compressor 25 P + 83 P extra = 108 P -> 50 %
-    const half = produced(83);
+    // Generator Lv.2 (bigger firebox for the 500 hay of fuel): 90 P - 10 % loss = 81 P; compressor 25 P + 137 P extra = 162 P -> 50 %
+    const half = produced(137);
     expect(full.sat).toBe(1);
     expect(half.sat).toBeGreaterThan(0.45);
     expect(half.sat).toBeLessThan(0.55);
@@ -394,7 +385,7 @@ describe('power', () => {
     run(sim, 0.1);
     // 10 m apart: out of the 8 m base range.
     expect(pole.network).not.toBe(gen.network);
-    unlock(sim, ['f_pole_range']);
+    unlock(sim, ['f_pole@2']); // Power Pole Lv.2: range 12 m, still 6 machines per pole
     run(sim, 0.1);
     expect(pole.network).toBe(gen.network);
     // Connection limit: 6 consumers per pole, the 7th is not attached (too far from the generator).
@@ -402,8 +393,13 @@ describe('power', () => {
     for (let i = 0; i < 7; i++) addLoad(sim, 9100 + i, Math.floor(pc.x) + 2, Math.floor(pc.z) - 3 + i, 5);
     run(sim, 0.1);
     const attached = sim.power.feeds.filter((f) => f.from === pole.id).length;
-    expect(attached).toBe(sim.stat('pole.connections'));
+    expect(attached).toBe(6);
+    expect(sim.stat('pole.connections')).toBe(6);
     expect(sim.buildings.get(9106)!.network).toBe(-1);
+    // Lv.3: 12 machines per pole -> the 7th attaches.
+    unlock(sim, ['f_pole@3']);
+    run(sim, 0.1);
+    expect(sim.power.feeds.filter((f) => f.from === pole.id).length).toBe(7);
   });
 });
 

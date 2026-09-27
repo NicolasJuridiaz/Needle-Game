@@ -53,7 +53,11 @@ export class Sim implements SimContext {
   private topologyDirty = true;
   completed = false;
 
-  constructor(seed: number, opts: { generate?: boolean } = {}) {
+  /**
+   * `pileUnits` overrides WORLD.pile.totalUnits for a new game (balance experiments). Saves keep the pile
+   * size they were generated with (HaySave carries initialUnits / unitsPerMeter).
+   */
+  constructor(seed: number, opts: { generate?: boolean; pileUnits?: number } = {}) {
     this.seed = seed >>> 0;
     this.rng = new Rng(this.seed ^ 0x51f15e);
     this.hay = new HayField();
@@ -68,12 +72,12 @@ export class Sim implements SimContext {
       const n = this.hay.needles.find((q) => q.id === id);
       if (n) this.events.emit('needle:exposed', { id, pos: { ...n.pos } });
     };
-    if (opts.generate !== false) this.newGame();
+    if (opts.generate !== false) this.newGame(opts.pileUnits);
   }
 
   /** Fresh run: generate the pile, place fixed buildings. */
-  private newGame(): void {
-    this.hay.generate(this.seed);
+  private newGame(pileUnits?: number): void {
+    this.hay.generate(this.seed, pileUnits);
     this.applyAnnexBlock();
     const s = WORLD.fixed.sellStation;
     this.placeInternal('sellStation', { x: s.x, z: s.z, level: 0 }, s.rot, undefined, 0);

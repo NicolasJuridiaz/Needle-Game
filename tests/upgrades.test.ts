@@ -10,7 +10,8 @@ import { BUILDABLES } from '../src/config/buildables';
 import { ITEMS } from '../src/config/items';
 import { NEEDLE_BUFFS } from '../src/config/needles';
 import { BASE_STATS } from '../src/config/stats';
-import { TECH_NODES } from '../src/config/techTree';
+import { parseRequirement, TECH_NODES } from '../src/config/techTree';
+import { grantTech } from './support/simKit';
 import { WORLD } from '../src/config/world';
 import { EventBus } from '../src/core/events';
 import { Building, type BuildingInit } from '../src/sim/building';
@@ -40,11 +41,10 @@ describe('upgrade audit (data)', () => {
     for (const node of TECH_NODES) {
       const p = new Progression(new EventBus());
       p.addWP(10_000, 'milestone');
-      // Satisfy prerequisites (recursively).
-      const byId = new Map(TECH_NODES.map((n) => [n.id, n]));
-      const need = (id: string) => { for (const r of byId.get(id)!.requires) { need(r); while (p.canUnlock(r).ok) p.unlock(r); } };
-      need(node.id);
+      p.addMoney(1e9, 'milestone');
+      for (const r of node.requires) if (!p.isUnlocked(r)) grantTech(p, r);
       for (let lvl = 0; lvl < node.levels.length; lvl++) {
+        for (const r of node.levels[lvl].req ?? []) if (!p.isUnlocked(r)) grantTech(p, r);
         const effects = node.levels[lvl].effects;
         const before = effects.map((e) => p.stat(e.stat));
         expect(p.unlock(node.id), `${node.id} L${lvl + 1}`).toBe(true);
@@ -71,8 +71,8 @@ describe('upgrade audit (data)', () => {
       expect(read, `${e.stat} is never read by the simulation`).toBe(true);
     }
     // The gate mirrors really are gated by a node on a port.
-    expect(BUILDABLES.silo.ports.some((p) => p.requiresNode === 'e_silo_dual')).toBe(true);
-    expect(BUILDABLES.hopper.ports.some((p) => p.requiresNode === 'x_hopper_dual')).toBe(true);
+    expect(BUILDABLES.silo.ports.some((p) => p.requiresNode !== undefined && parseRequirement(p.requiresNode)[0] === 'e_silo')).toBe(true);
+    expect(BUILDABLES.hopper.ports.some((p) => p.requiresNode !== undefined && parseRequirement(p.requiresNode)[0] === 'x_hopper')).toBe(true);
   });
 
   it('every important tool and machine has meaningful upgrades', () => {
@@ -128,15 +128,11 @@ const sink = (sim: Sim, x: number, z: number) => {
   return b;
 };
 
+/** `nodes`: technology specs ("id" = plans / Lv.1, "id@N" = Lv.N), granted with test WP and Money. */
 function newSim(nodes: string[]): Sim {
   const sim = new Sim(7);
   sim.progress.addMoney(10_000_000, 'milestone');
-  sim.progress.addWP(10_000, 'milestone');
-  const byId = new Map(TECH_NODES.map((n) => [n.id, n]));
-  const want = new Set<string>();
-  const add = (id: string) => { if (want.has(id)) return; want.add(id); byId.get(id)!.requires.forEach(add); };
-  nodes.forEach(add);
-  for (let pass = 0; pass < 10; pass++) for (const id of want) while (sim.progress.canUnlock(id).ok) sim.progress.unlock(id);
+  for (const n of nodes) grantTech(sim.progress, n);
   sim.player.pos = { x: 25, y: 0, z: 18 };
   sim.rebuildTopology();
   return sim;
@@ -171,8 +167,8 @@ function compare(base: string[], upgrade: string[], build: (sim: Sim) => () => n
 const Z = -18; // quiet floor strip north of the pile
 
 describe('upgrade audit (behaviour)', () => {
-  it('Belt Speed raises conveyor throughput', () => {
-    const [a, b] = compare(['l_conveyor'], ['l_speed'], (sim) => {
+  it('Conveyor Lv.3 raises conveyor throughput', () => {
+    const [a, b] = compare(['l_conveyor'], ['l_conveyor@3'], (sim) => {
       flood(sim, -28, Z, 0);
       for (let x = -27; x <= -20; x++) place(sim, 'conveyor', x, Z, 0);
       const s = sink(sim, -19, Z);
@@ -182,8 +178,8 @@ describe('upgrade audit (behaviour)', () => {
     expect(b).toBeGreaterThan(a * 1.4);
   });
 
-  it('Scan Speed raises scanner throughput', () => {
-    const [a, b] = compare(['d_scanner', 'l_conveyor', 'l_speed', 'f_generator'], ['d_speed'], (sim) => {
+  it('Scanner Lv.3 raises scanner throughput', () => {
+    const [a, b] = compare(['d_scanner', 'l_conveyor@4', 'f_generator'], ['d_scanner@3'], (sim) => {
       power(sim, -24, Z + 2);
       flood(sim, -29, Z, 0);
       place(sim, 'conveyor', -28, Z, 0);
@@ -196,8 +192,8 @@ describe('upgrade audit (behaviour)', () => {
     expect(b).toBeGreaterThan(a * 1.1);
   });
 
-  it('Compression Speed raises bale output', () => {
-    const [a, b] = compare(['e_compressor', 'l_conveyor', 'l_speed', 'f_generator'], ['e_comp_speed'], (sim) => {
+  it('Compressor Lv.2 raises bale output', () => {
+    const [a, b] = compare(['e_compressor', 'l_conveyor@3', 'f_generator'], ['e_compressor@2'], (sim) => {
       power(sim, -24, Z + 2);
       flood(sim, -29, Z, 0);
       place(sim, 'conveyor', -28, Z, 0);
@@ -210,9 +206,9 @@ describe('upgrade audit (behaviour)', () => {
     expect(b).toBeGreaterThan(a * 1.15);
   });
 
-  it('Bigger Claw raises robotic arm extraction', () => {
+  it('Robotic Arm Lv.2 (bigger claw) raises robotic arm extraction', () => {
     const edge = Math.floor(WORLD.pile.cx - WORLD.pile.rx) - 1;
-    const [a, b] = compare(['x_arm', 'f_generator'], ['x_arm_grab'], (sim) => {
+    const [a, b] = compare(['x_arm', 'f_generator'], ['x_arm@2'], (sim) => {
       power(sim, edge - 5, -2);
       place(sim, 'roboticArm', edge, 0, 2);
       return () => sim.progress.stats.hayExtractedArm;
@@ -221,9 +217,9 @@ describe('upgrade audit (behaviour)', () => {
     expect(b).toBeGreaterThan(a * 1.2);
   });
 
-  it('Rake Speed raises piston rake extraction', () => {
+  it('Piston Rake Lv.2 raises piston rake extraction', () => {
     const edge = Math.floor(WORLD.pile.cx - WORLD.pile.rx) - 2;
-    const [a, b] = compare(['x_rake', 'f_generator', 'x_rake_auto', 'l_conveyor'], ['x_rake_speed'], (sim) => {
+    const [a, b] = compare(['x_rake', 'f_generator', 'x_rake_auto', 'l_conveyor'], ['x_rake@2'], (sim) => {
       power(sim, edge - 6, -5);
       place(sim, 'pistonRake', edge, -1, 0);
       sink(sim, edge - 1, 0);
@@ -233,16 +229,16 @@ describe('upgrade audit (behaviour)', () => {
     expect(b).toBeGreaterThan(a * 1.15);
   });
 
-  it('Generator Output raises power supply', () => {
-    const [a, b] = compare(['f_generator'], ['f_gen_output'], (sim) => {
+  it('Generator Lv.2 raises power supply', () => {
+    const [a, b] = compare(['f_generator'], ['f_generator@2'], (sim) => {
       power(sim, -24, Z);
       return () => sim.power.totalSupply * sim.time;
     }, 1, 10);
     expect(b).toBeGreaterThan(a * 1.4);
   });
 
-  it('Hopper Output raises hopper throughput', () => {
-    const [a, b] = compare(['x_hopper', 'l_conveyor', 'l_speed'], ['x_hopper_out'], (sim) => {
+  it('Hopper Lv.3 raises hopper throughput', () => {
+    const [a, b] = compare(['x_hopper', 'l_conveyor@3'], ['x_hopper@3'], (sim) => {
       flood(sim, -29, Z, 0);
       const h = place(sim, 'hopper', -28, Z, 0);
       const out = h.ports.find((p) => p.kind === 'out')!;

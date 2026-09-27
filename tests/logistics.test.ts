@@ -11,6 +11,7 @@ import type { SimContext } from '../src/sim/interfaces';
 import { Conveyor, Splitter } from '../src/sim/logistics/index';
 import { Sim } from '../src/sim/sim';
 import type { BuildingType, Cell, Dir, ItemPacket, Level, Rot } from '../src/sim/types';
+import { unlock, unlockFirst } from './support/simKit';
 
 const DT = 0.05;
 
@@ -19,31 +20,7 @@ function run(sim: Sim, seconds: number): void {
   for (let i = 0; i < n; i++) sim.tick(DT);
 }
 
-function unlock(sim: Sim, ids: string[]): void {
-  sim.progress.addWP(100_000, 'milestone');
-  const byId = new Map(TECH_NODES.map((n) => [n.id, n]));
-  const want = new Set<string>();
-  const add = (id: string) => { if (want.has(id)) return; want.add(id); for (const r of byId.get(id)!.requires) add(r); };
-  ids.forEach(add);
-  for (let pass = 0; pass < 20; pass++) for (const id of want) while (sim.progress.canUnlock(id).ok) sim.progress.unlock(id);
-  for (const id of ids) expect(sim.progress.isUnlocked(id), `unlock ${id}`).toBe(true);
-  sim.rebuildTopology();
-}
 
-/** Unlock only the given nodes' FIRST level (plus prerequisites) - keeps belt speed at base. */
-function unlockFirst(sim: Sim, ids: string[]): void {
-  sim.progress.addWP(100_000, 'milestone');
-  const byId = new Map(TECH_NODES.map((n) => [n.id, n]));
-  const done = new Set<string>();
-  const go = (id: string) => {
-    if (done.has(id)) return;
-    done.add(id);
-    for (const r of byId.get(id)!.requires) go(r);
-    if (!sim.progress.isUnlocked(id)) expect(sim.progress.unlock(id), `unlock ${id}`).toBe(true);
-  };
-  ids.forEach(go);
-  sim.rebuildTopology();
-}
 
 function newSim(seed = 1): Sim {
   const sim = new Sim(seed);

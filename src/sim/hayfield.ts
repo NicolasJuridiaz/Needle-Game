@@ -138,8 +138,9 @@ export class HayField implements IHayField {
   // Generation
   // =====================================================================================
 
-  generate(seed: number): void {
+  generate(seed: number, totalUnits: number = WORLD.pile.totalUnits): void {
     const P = WORLD.pile;
+    const units = Number.isFinite(totalUnits) && totalUnits > 0 ? totalUnits : P.totalUnits;
     const rng = new Rng(seed ^ 0x6a09e667);
     this.rng = new Rng(seed ^ 0x3c6ef372);
     const nOutline = valueNoise2D(seed ^ 0x1234);
@@ -208,8 +209,8 @@ export class HayField implements IHayField {
     let sum = 0;
     for (let i = 0; i < this.heights.length; i++) sum += this.heights[i];
     this.sumH = sum;
-    this.unitsPerMeter = P.totalUnits / sum;
-    this.initialUnits = P.totalUnits;
+    this.unitsPerMeter = units / sum;
+    this.initialUnits = units;
     this.dirty = { c0: 0, r0: 0, c1: this.cols - 1, r1: this.rows - 1 };
     this.placeNeedles(rng);
   }

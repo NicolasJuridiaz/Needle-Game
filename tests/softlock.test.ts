@@ -9,7 +9,7 @@ import { BUILDABLES } from '../src/config/buildables';
 import { MILESTONES } from '../src/config/milestones';
 import { NEEDLE_COUNT } from '../src/config/needles';
 import { MAX_ACTIVE_ORDERS, ORDERS, type OrderDef } from '../src/config/orders';
-import { TECH_BY_ID, TECH_NODES } from '../src/config/techTree';
+import { ownedLevelFor, parseRequirement, TECH_BY_ID, TECH_NODES } from '../src/config/techTree';
 import { TOOLS, WHEELBARROW } from '../src/config/tools';
 import { WORLD } from '../src/config/world';
 import { Rng } from '../src/core/rng';
@@ -367,19 +367,22 @@ function plansFor(o: OrderDef): string[] {
   }
 }
 
-/** WP cost of the first level of `ids` and all their prerequisites. */
+/** WP cost of `ids` ("id" = first level, "id@N" = up to Lv.N) and all their prerequisites. */
 function planCost(ids: string[]): number {
-  const seen = new Set<string>();
-  const go = (id: string): void => {
-    if (seen.has(id)) return;
+  const need = new Map<string, number>();
+  const go = (spec: string): void => {
+    const [id, lv] = parseRequirement(spec);
     const n = TECH_BY_ID[id];
     expect(n, `tech node ${id}`).toBeDefined();
-    seen.add(id);
+    const owned = spec.includes('@') ? ownedLevelFor(n, lv) : 1;
+    if ((need.get(id) ?? 0) >= owned) return;
+    need.set(id, owned);
     n.requires.forEach(go);
+    for (let i = 0; i < owned; i++) (n.levels[i].req ?? []).forEach(go);
   };
   ids.forEach(go);
   let c = 0;
-  for (const id of seen) c += TECH_BY_ID[id].levels[0].cost;
+  for (const [id, owned] of need) for (let i = 0; i < owned; i++) c += TECH_BY_ID[id].levels[i].cost;
   return c;
 }
 

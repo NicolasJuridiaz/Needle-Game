@@ -5,7 +5,7 @@ import { MILESTONES, type MilestoneDef } from '../config/milestones';
 import { NEEDLE_BUFFS } from '../config/needles';
 import { MAX_ACTIVE_ORDERS, ORDERS, type OrderDef, type OrderMetric } from '../config/orders';
 import { BASE_STATS } from '../config/stats';
-import { TECH_BY_ID, TECH_NODES } from '../config/techTree';
+import { ownedLevelFor, parseRequirement, requirementLabel, TECH_BY_ID, TECH_NODES } from '../config/techTree';
 import { TOOLS, WHEELBARROW } from '../config/tools';
 import type { EventBus } from '../core/events';
 import type { Building } from './building';
@@ -197,7 +197,11 @@ export class Progression implements IProgression {
   // Work Tree
   // ===================================================================================
 
-  isUnlocked(nodeId: string): boolean { return this.nodeLevel(nodeId) >= 1; }
+  isUnlocked(req: string): boolean {
+    if (req.indexOf('@') < 0) return this.nodeLevel(req) >= 1;
+    const [id, lv] = parseRequirement(req);
+    return this.nodeLevel(id) >= ownedLevelFor(TECH_BY_ID[id], lv);
+  }
 
   nodeLevel(nodeId: string): number { return this.nodes.get(nodeId) ?? 0; }
 
@@ -206,17 +210,23 @@ export class Progression implements IProgression {
     if (!node) return { ok: false, reason: 'Unknown upgrade' };
     const level = this.nodeLevel(nodeId);
     if (level >= node.levels.length) return { ok: false, reason: 'Maxed' };
-    const cost = node.levels[level].cost;
-    for (const req of node.requires) {
-      if (!this.isUnlocked(req)) return { ok: false, reason: `Requires ${TECH_BY_ID[req]?.name ?? req}`, cost };
+    const next = node.levels[level];
+    const cost = next.cost;
+    const money = next.money;
+    const reqs = level === 0 ? [...node.requires, ...(next.req ?? [])] : next.req ?? [];
+    for (const r of reqs) {
+      if (!this.isUnlocked(r)) return { ok: false, reason: `Requires ${requirementLabel(r)}`, cost, money };
     }
-    if (this.wp < cost) return { ok: false, reason: `Need ${Math.ceil(cost - this.wp)} more WP`, cost };
-    return { ok: true, cost };
+    if (this.wp < cost) return { ok: false, reason: `Need ${Math.ceil(cost - this.wp)} more WP`, cost, money };
+    if (this.money < money) return { ok: false, reason: `Need $${Math.ceil(money - this.money).toLocaleString('en-US')} more`, cost, money };
+    return { ok: true, cost, money };
   }
 
   unlock(nodeId: string): boolean {
     const chk = this.canUnlock(nodeId);
     if (!chk.ok || chk.cost === undefined) return false;
+    const money = chk.money ?? 0;
+    if (money > 0 && !this.spendMoney(money)) return false;
     const level = this.nodeLevel(nodeId) + 1;
     if (chk.cost > 0) {
       this.wp -= chk.cost;
@@ -260,7 +270,7 @@ export class Progression implements IProgression {
     }
     if (owned) return { ok: false, reason: 'Already owned', cost };
     if (requiresNode !== null && !this.isUnlocked(requiresNode)) {
-      return { ok: false, reason: `Unlock ${TECH_BY_ID[requiresNode]?.name ?? requiresNode} in the Work Tree`, cost };
+      return { ok: false, reason: `Unlock ${requirementLabel(requiresNode)} in the Work Tree`, cost };
     }
     if (this.money < cost) return { ok: false, reason: `Need $${Math.ceil(cost - this.money).toLocaleString('en-US')} more`, cost };
     return { ok: true, cost };
@@ -306,7 +316,7 @@ export class Progression implements IProgression {
   recordSale(item: ItemType, amount: number, viaBelt: boolean, pos: Vec3): number {
     const def = ITEMS[item];
     if (!def || !(amount > 0) || !Number.isFinite(amount)) return 0;
-    const value = amount * this.stat(def.valueStat) * this.stat('econ.saleMul');
+    const value = amount * this.stat(def.valueStat) * this.stat('econ.hayMul') * this.stat('econ.saleMul');
     const hayEq = amount * BALANCE.hayEquivalent[item];
     const st = this.stats;
     st[SOLD_STAT[item]] += amount;

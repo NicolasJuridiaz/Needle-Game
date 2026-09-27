@@ -9,7 +9,7 @@ import { ITEMS } from '../src/config/items';
 import { MILESTONES } from '../src/config/milestones';
 import { NEEDLE_BUFFS } from '../src/config/needles';
 import { ORDER_BY_ID } from '../src/config/orders';
-import { TECH_BY_ID, TECH_NODES } from '../src/config/techTree';
+import { maxDisplayLevel, TECH_BY_ID, TECH_NODES } from '../src/config/techTree';
 import { Rng } from '../src/core/rng';
 import type { Building } from '../src/sim/building';
 import { neighbor } from '../src/sim/grid';
@@ -24,7 +24,8 @@ import {
   refuel, rich, run, tally, unlock,
 } from './support/simKit';
 
-const ALL_NODES = TECH_NODES.map((n) => n.id);
+/** Every technology at its maximum level (Hay Sell Value Lv.10 included): the worst case for exploits. */
+const ALL_NODES = TECH_NODES.map((n) => `${n.id}@${maxDisplayLevel(n)}`);
 
 function fullSim(seed: number): Sim {
   const sim = new Sim(seed);
@@ -34,7 +35,7 @@ function fullSim(seed: number): Sim {
   return sim;
 }
 
-const saleValue = (sim: Sim, item: ItemType, amount: number): number => amount * sim.stat(ITEMS[item].valueStat) * sim.stat('econ.saleMul');
+const saleValue = (sim: Sim, item: ItemType, amount: number): number => amount * sim.stat(ITEMS[item].valueStat) * sim.stat('econ.hayMul') * sim.stat('econ.saleMul');
 
 interface Snap { hay: number; bale: number; wrapped: number; needles: number[] }
 function snap(b: Building): Snap {
@@ -112,6 +113,7 @@ describe('economy: build, demolish and move', () => {
     const rng = new Rng(7);
     const types: BuildingType[] = ['hopper', 'silo', 'hayGenerator', 'conveyor', 'splitter', 'roboticArm', 'compressor', 'wrapper', 'scannerMk1', 'powerPole', 'merger'];
     const m0 = sim.progress.money;
+    const earned0 = sim.progress.stats.moneyEarned;
     let paidTotal = 0;
     let refundTotal = 0;
     const ev = tally(sim, ['building:removed']);
@@ -137,7 +139,7 @@ describe('economy: build, demolish and move', () => {
     expect(refundTotal).toBeLessThanOrEqual(paidTotal + 1e-6);
     expect(sim.progress.money).toBeCloseTo(m0 - paidTotal + refundTotal, 6);
     expect(sim.progress.money).toBeLessThanOrEqual(m0);
-    expect(sim.progress.stats.moneyEarned).toBe(50_000_000); // refunds are not "earned"
+    expect(sim.progress.stats.moneyEarned).toBe(earned0); // refunds are not "earned"
   });
 
   /** Builds one of each container type holding items (and a hidden needle where it can hold one). */

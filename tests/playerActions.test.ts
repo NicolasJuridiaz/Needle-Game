@@ -9,6 +9,7 @@ import {
 } from '../src/sim/playerActions';
 import { Sim } from '../src/sim/sim';
 import type { NeedleState, ToolId } from '../src/sim/types';
+import { grantTech } from './support/simKit';
 
 // ---------------------------------------------------------------------------------------------
 // Fake hay field (HayField is implemented in parallel): a pile with a finite amount of hay,
@@ -102,10 +103,7 @@ describe('playerDig', () => {
   it('uses the stats of the tool (upgrades included)', () => {
     const { sim, fake, own } = setup();
     own('shovel');
-    sim.progress.addWP(10, 'milestone');
-    sim.progress.unlock('p_grab');
-    sim.progress.unlock('p_shovel');
-    sim.progress.unlock('p_wide_shovel');
+    grantTech(sim.progress, 'p_shovel@2');
     const r = playerDig(sim, 'shovel', 0, 0, 0);
     expect(r.amount).toBeCloseTo(6 * 1.6, 9);
     expect(fake.calls[0].radius).toBeCloseTo(0.5 * 1.4, 9);
@@ -258,8 +256,7 @@ describe('detectorReading', () => {
     at(sim, 4, -2);
     expect(detectorReading(sim).needleId).toBe(3);
     expect(fake.detectorCalls[0]).toEqual([4, -2, BASE_STATS['tool.detector.range'], BASE_STATS['tool.detector.depth'], 1]);
-    sim.progress.addWP(10, 'milestone');
-    for (const id of ['p_grab', 'p_shovel', 'p_detector', 'p_det_precision']) expect(sim.progress.unlock(id)).toBe(true);
+    grantTech(sim.progress, 'p_detector@3');
     detectorReading(sim);
     expect(fake.detectorCalls[1][4]).toBe(0);
   });

@@ -5,7 +5,8 @@ import { MILESTONES } from '../src/config/milestones';
 import { NEEDLE_BUFFS } from '../src/config/needles';
 import { MAX_ACTIVE_ORDERS, ORDERS, ORDER_BY_ID } from '../src/config/orders';
 import { BASE_STATS } from '../src/config/stats';
-import { TECH_BY_ID, TECH_NODES } from '../src/config/techTree';
+import { displayLevel, ownedLevelFor, parseRequirement, TECH_BY_ID, TECH_NODES } from '../src/config/techTree';
+
 import { TOOLS, WHEELBARROW } from '../src/config/tools';
 import { EventBus, type GameEvents } from '../src/core/events';
 import type { Building } from '../src/sim/building';
@@ -13,6 +14,7 @@ import type { SimContext } from '../src/sim/interfaces';
 import { Inventory } from '../src/sim/inventory';
 import { Progression } from '../src/sim/progression';
 import type { BuildingType, MachineStatus } from '../src/sim/types';
+import { grantTech } from './support/simKit';
 
 // ---------------------------------------------------------------------------------------------
 // Small fakes (other modules are developed in parallel)
@@ -66,15 +68,10 @@ function setup() {
   return { events, p, world, ctx };
 }
 
-/** Unlock nodes (and their requirements, depth first) granting exactly the WP needed. */
+/** Unlock a node up to OWNED `level` (requirements first), granting exactly the WP and Money needed. */
 function unlockWithWP(p: Progression, id: string, level = 1): void {
   const node = TECH_BY_ID[id];
-  for (const r of node.requires) if (!p.isUnlocked(r)) unlockWithWP(p, r);
-  while (p.nodeLevel(id) < level) {
-    const cost = node.levels[p.nodeLevel(id)].cost;
-    p.addWP(cost, 'milestone');
-    expect(p.unlock(id)).toBe(true);
-  }
+  grantTech(p, `${id}@${displayLevel(node, level)}`);
 }
 
 const TICK = BALANCE.tickDt;
@@ -91,13 +88,20 @@ describe('config integrity', () => {
   it('every tech/needle effect targets a known stat and every reference resolves', () => {
     for (const n of TECH_NODES) {
       for (const lv of n.levels) for (const e of lv.effects) expect(BASE_STATS, `${n.id} -> ${e.stat}`).toHaveProperty([e.stat]);
-      for (const r of n.requires) expect(TECH_BY_ID[r], `${n.id} requires ${r}`).toBeDefined();
+      for (const r of [...n.requires, ...n.levels.flatMap((l) => l.req ?? [])]) {
+        const [id, lv] = parseRequirement(r);
+        expect(TECH_BY_ID[id], `${n.id} requires ${r}`).toBeDefined();
+        expect(ownedLevelFor(TECH_BY_ID[id], lv), `${n.id} requires ${r}`).toBeLessThanOrEqual(TECH_BY_ID[id].levels.length);
+      }
     }
     for (const b of NEEDLE_BUFFS) for (const e of b.effects) expect(BASE_STATS).toHaveProperty([e.stat]);
     for (const o of ORDERS) for (const a of o.after) expect(ORDER_BY_ID[a], `${o.id} after ${a}`).toBeDefined();
-    for (const t of Object.values(TOOLS)) if (t.requiresNode) expect(TECH_BY_ID[t.requiresNode]).toBeDefined();
+    for (const t of Object.values(TOOLS)) if (t.requiresNode) expect(TECH_BY_ID[parseRequirement(t.requiresNode)[0]]).toBeDefined();
     expect(TECH_BY_ID[WHEELBARROW.requiresNode]).toBeDefined();
-    for (const b of Object.values(BUILDABLES)) if (b.requiresNode) expect(TECH_BY_ID[b.requiresNode], b.id).toBeDefined();
+    for (const b of Object.values(BUILDABLES)) {
+      if (b.requiresNode) expect(TECH_BY_ID[parseRequirement(b.requiresNode)[0]], b.id).toBeDefined();
+      for (const port of b.ports) if (port.requiresNode) expect(TECH_BY_ID[parseRequirement(port.requiresNode)[0]], `${b.id} port`).toBeDefined();
+    }
     expect(new Set(MILESTONES.map((m) => m.id)).size).toBe(MILESTONES.length);
   });
 });
@@ -142,32 +146,35 @@ describe('stat folding', () => {
     p.onNeedleFound(3, 'manual', ORIGIN); // first needle found -> buff 0 (+15% carry)
     expect(p.stat('player.carry')).toBeCloseTo(65 * 1.15, 9);
     // The buff multiplies the upgraded value, including added tech capacity.
-    unlockWithWP(p, 'p_barrow_cap');
+    unlockWithWP(p, 'p_wheelbarrow', 2);
     expect(p.stat('wheelbarrow.capacity')).toBeCloseTo((200 + 200) * 1.15, 9);
   });
 
   it('multiplies tech muls across levels', () => {
     const { p } = setup();
-    unlockWithWP(p, 'l_speed', 2);
-    expect(p.stat('belt.speed')).toBeCloseTo(1.667 * 1.5 * (4 / 3), 9);
+    unlockWithWP(p, 'l_conveyor', 3); // Lv.3
+    expect(p.stat('belt.speed')).toBeCloseTo(1.667 * 1.2 * 1.25, 9);
+    unlockWithWP(p, 'l_conveyor', 5); // Lv.5
+    expect(p.stat('belt.speed')).toBeCloseTo(1.667 * 1.2 * 1.25 * 2, 9);
+    expect(p.stat('belt.spacing')).toBeCloseTo(0.333 * 0.75, 9);
   });
 
   it('lets the last tech set win over base/adds/muls, then applies needle buffs', () => {
     const { p } = setup();
-    unlockWithWP(p, 'x_arm_grab', 1);
+    unlockWithWP(p, 'x_arm', 2);
     expect(p.stat('arm.grab')).toBe(30);
-    unlockWithWP(p, 'x_arm_grab', 2);
+    unlockWithWP(p, 'x_arm', 5);
     expect(p.stat('arm.grab')).toBe(40);
     for (let i = 0; i < 6; i++) p.onNeedleFound(i, 'scanner', ORIGIN);
     expect(p.stat('arm.grab')).toBeCloseTo(40 * 1.2, 9); // 6th buff: +20% claw
-    unlockWithWP(p, 'p_det_range');
+    unlockWithWP(p, 'p_detector', 2);
     expect(p.stat('tool.detector.range')).toBe(13);
   });
 
   it('invalidates the cache on unlock and on needle found', () => {
     const { p } = setup();
     expect(p.stat('tool.hands.dig')).toBe(2);
-    unlockWithWP(p, 'p_grab');
+    unlockWithWP(p, 'p_hands', 1);
     expect(p.stat('tool.hands.dig')).toBe(4);
     expect(p.stat('belt.speed')).toBe(1.667);
     p.onNeedleFound(0, 'manual', ORIGIN);
@@ -180,7 +187,7 @@ describe('stat folding', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(p.stat('nope.missing')).toBe(0);
     expect(p.stat('nope.missing')).toBe(0);
-    unlockWithWP(p, 'p_grab'); // cache cleared: still reported only once
+    unlockWithWP(p, 'p_hands', 1); // cache cleared: still reported only once
     expect(p.stat('nope.missing')).toBe(0);
     expect(err).toHaveBeenCalledTimes(1);
     expect(p.stat('toString')).toBe(0); // prototype keys are not stats
@@ -193,39 +200,69 @@ describe('stat folding', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('unlock rules', () => {
-  it('checks requirements, WP and max level with player-facing reasons', () => {
+  it('checks requirements, WP, money and max level with player-facing reasons', () => {
     const { p, events } = setup();
-    const rec = recorder(events, ['node:unlocked', 'wp:changed']);
+    const rec = recorder(events, ['node:unlocked', 'wp:changed', 'money:changed']);
     const hook = vi.fn();
     p.onUnlocked = hook;
 
     expect(p.canUnlock('does_not_exist').ok).toBe(false);
-    expect(p.canUnlock('p_shovel')).toEqual({ ok: false, reason: 'Requires Bigger Grab', cost: 1 });
-    expect(p.canUnlock('p_grab')).toEqual({ ok: false, reason: 'Need 1 more WP', cost: 1 });
-    expect(p.unlock('p_grab')).toBe(false);
+    expect(p.canUnlock('p_shovel')).toEqual({ ok: false, reason: 'Requires Hands Lv.2', cost: 1, money: 0 });
+    expect(p.canUnlock('p_hands')).toEqual({ ok: false, reason: 'Need 1 more WP', cost: 1, money: 0 });
+    expect(p.unlock('p_hands')).toBe(false);
 
     p.addWP(1, 'milestone');
     rec.clear();
-    expect(p.canUnlock('p_grab')).toEqual({ ok: true, cost: 1 });
-    expect(p.unlock('p_grab')).toBe(true);
+    expect(p.canUnlock('p_hands')).toEqual({ ok: true, cost: 1, money: 0 });
+    expect(p.unlock('p_hands')).toBe(true); // Hands Lv.2
     expect(p.wp).toBe(0);
-    expect(p.nodeLevel('p_grab')).toBe(1);
-    expect(p.isUnlocked('p_grab')).toBe(true);
+    expect(p.nodeLevel('p_hands')).toBe(1);
+    expect(p.isUnlocked('p_hands@2')).toBe(true);
+    expect(p.isUnlocked('p_hands@3')).toBe(false);
     expect(rec.of('wp:changed')).toEqual([{ wp: 0, delta: -1 }]);
-    expect(rec.of('node:unlocked')).toEqual([{ id: 'p_grab', level: 1 }]);
-    expect(hook).toHaveBeenCalledWith('p_grab');
-    expect(p.canUnlock('p_grab')).toEqual({ ok: false, reason: 'Maxed' });
+    expect(rec.of('node:unlocked')).toEqual([{ id: 'p_hands', level: 1 }]);
+    expect(hook).toHaveBeenCalledWith('p_hands');
+
+    // Lv.3 costs WP and Money.
+    const lv3 = TECH_BY_ID.p_hands.levels[1];
+    p.addWP(lv3.cost, 'milestone');
+    expect(p.canUnlock('p_hands')).toEqual({ ok: false, reason: `Need $${lv3.money} more`, cost: lv3.cost, money: lv3.money });
+    p.addMoney(lv3.money, 'sale');
+    rec.clear();
+    expect(p.unlock('p_hands')).toBe(true);
+    expect(p.money).toBe(0);
+    expect(rec.of('money:changed')).toEqual([{ money: 0, delta: -lv3.money }]);
+    expect(p.isUnlocked('p_hands@3')).toBe(true);
 
     p.addWP(1, 'milestone');
     expect(p.canUnlock('p_shovel').ok).toBe(true);
-    expect(p.canUnlock('p_wheelbarrow')).toEqual({ ok: false, reason: 'Requires Bucket Plans', cost: 2 });
+    expect(p.canUnlock('p_wheelbarrow')).toEqual({ ok: false, reason: 'Requires Bucket', cost: 2, money: 0 });
+    p.addWP(1, 'milestone');
+    expect(p.unlock('p_move')).toBe(false); // requires Carry Capacity
+    expect(p.unlock('p_carry')).toBe(true);
+    expect(p.unlock('p_move')).toBe(true);
+    expect(p.canUnlock('p_move')).toEqual({ ok: false, reason: 'Maxed' });
+  });
+
+  it('per-level requirements gate a level, not the plans', () => {
+    const { p } = setup();
+    unlockWithWP(p, 'x_arm', 4);
+    const lv5 = TECH_BY_ID.x_arm.levels[4];
+    expect(lv5.req).toEqual(['l_conveyor@3']);
+    p.addWP(lv5.cost, 'milestone');
+    p.addMoney(lv5.money, 'sale');
+    expect(p.nodeLevel('l_conveyor')).toBeLessThan(3);
+    expect(p.canUnlock('x_arm')).toEqual({ ok: false, reason: 'Requires Conveyor Network Lv.3', cost: lv5.cost, money: lv5.money });
+    unlockWithWP(p, 'l_conveyor', 3);
+    expect(p.unlock('x_arm')).toBe(true);
+    expect(displayLevel(TECH_BY_ID.x_arm, p.nodeLevel('x_arm'))).toBe(5);
   });
 
   it('unlocks multi-level nodes one level at a time with per-level cost', () => {
     const { p } = setup();
     p.addWP(1, 'milestone');
     expect(p.unlock('p_carry')).toBe(true);
-    expect(p.canUnlock('p_carry')).toEqual({ ok: false, reason: 'Need 2 more WP', cost: 2 });
+    expect(p.canUnlock('p_carry')).toEqual({ ok: false, reason: 'Need 2 more WP', cost: 2, money: 0 });
     p.addWP(5, 'milestone');
     expect(p.unlock('p_carry')).toBe(true);
     expect(p.nodeLevel('p_carry')).toBe(2);
@@ -251,24 +288,25 @@ describe('shop', () => {
     expect(p.buildingCost('hopper', 0)).toBe(cost);
     expect(p.buildingCost('hopper', 1)).toBe(Math.round(cost * costGrowth));
     expect(p.buildingCost('hopper', 3)).toBe(Math.round(cost * costGrowth ** 3));
-    expect(p.buildingCost('conveyor', 50)).toBe(12);
+    expect(p.buildingCost('conveyor', 50)).toBe(BUILDABLES.conveyor.cost);
   });
 
   it('buys tools only when the plan is unlocked, not owned and affordable', () => {
     const { p, events } = setup();
     const rec = recorder(events, ['tool:bought', 'money:changed']);
     expect(p.canBuyTool('hands')).toEqual({ ok: false, reason: 'Already owned', cost: 0 });
-    expect(p.canBuyTool('shovel')).toEqual({ ok: false, reason: 'Unlock Shovel Plans in the Work Tree', cost: 40 });
+    const c = TOOLS.shovel.cost;
+    expect(p.canBuyTool('shovel')).toEqual({ ok: false, reason: 'Unlock Shovel in the Work Tree', cost: c });
     unlockWithWP(p, 'p_shovel');
-    expect(p.canBuyTool('shovel')).toEqual({ ok: false, reason: 'Need $40 more', cost: 40 });
+    expect(p.canBuyTool('shovel')).toEqual({ ok: false, reason: `Need $${c} more`, cost: c });
     expect(p.buyTool('shovel')).toBe(false);
-    p.addMoney(50, 'sale');
+    p.addMoney(c + 10, 'sale');
     rec.clear();
     expect(p.buyTool('shovel')).toBe(true);
     expect(p.money).toBe(10);
     expect(p.ownedTools.has('shovel')).toBe(true);
     expect(rec.of('tool:bought')).toEqual([{ tool: 'shovel' }]);
-    expect(rec.of('money:changed')).toEqual([{ money: 10, delta: -40 }]);
+    expect(rec.of('money:changed')).toEqual([{ money: 10, delta: -c }]);
     expect(p.buyTool('shovel')).toBe(false);
   });
 
@@ -327,19 +365,19 @@ describe('economy', () => {
     expect(p.stats.firstSaleAt).toBe(12.5);
     expect(p.stats.hayViaBelt).toBe(0);
 
-    unlockWithWP(p, 'e_hay_value');
-    expect(p.recordSale('hay', 10, true, pos)).toBeCloseTo(12.5, 9);
-    expect(p.recordSale('bale', 2, true, pos)).toBe(120);
-    expect(p.recordSale('wrapped', 1, false, pos)).toBe(110);
+    unlockWithWP(p, 'e_hay_value', 1); // Hay Sell Value Lv.2: 1.10x on every product
+    expect(p.recordSale('hay', 10, true, pos)).toBeCloseTo(11, 9);
+    expect(p.recordSale('bale', 2, true, pos)).toBeCloseTo(132, 9);
+    expect(p.recordSale('wrapped', 1, false, pos)).toBeCloseTo(121, 9);
     expect(p.stats.haySold).toBe(20);
     expect(p.stats.baleSold).toBe(2);
     expect(p.stats.wrappedSold).toBe(1);
     expect(p.stats.hayViaBelt).toBe(10 + 2 * BALANCE.hayEquivalent.bale);
     expect(p.stats.firstSaleAt).toBe(12.5);
-    expect(p.money).toBeCloseTo(10 + 12.5 + 120 + 110, 9);
+    expect(p.money).toBeCloseTo(10 + 11 + 132 + 121, 9); // the upgrade's granted money was spent on it
 
     for (let i = 0; i < 5; i++) p.onNeedleFound(i, 'manual', ORIGIN); // 5th buff: +20% sale value
-    expect(p.recordSale('bale', 1, true, pos)).toBeCloseTo(60 * 1.2, 9);
+    expect(p.recordSale('bale', 1, true, pos)).toBeCloseTo(60 * 1.1 * 1.2, 9);
     expect(p.recordSale('hay', 0, true, pos)).toBe(0);
 
     const sales = rec.of('sale');
@@ -677,7 +715,7 @@ describe('serialization', () => {
     const { p, ctx, world } = s;
     unlockWithWP(p, 'p_carry', 2);
     unlockWithWP(p, 'p_wheelbarrow');
-    unlockWithWP(p, 'x_hopper_dual');
+    unlockWithWP(p, 'x_hopper', 5);
     p.addMoney(5000, 'sale');
     expect(p.buyTool('bucket')).toBe(true);
     expect(p.buyTool('wheelbarrow')).toBe(true);
@@ -732,7 +770,7 @@ describe('serialization', () => {
     const save = p.serialize();
     save.money = -50;
     save.wp = Number.NaN;
-    save.nodes = [['p_carry', 99], ['gone_node', 1], ['p_grab', 0]];
+    save.nodes = [['p_carry', 99], ['gone_node', 1], ['p_hands', 0]];
     save.ownedTools = ['shovel', 'laser' as never];
     save.orders = [{ id: 'o_removed', base: 1, progress: 1, completed: true }, { id: 'o_first', base: 0, progress: 0, completed: true }];
     save.milestones = ['m_first_sale', 'm_unknown'];

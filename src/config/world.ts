@@ -29,10 +29,11 @@ export const WORLD = {
     /** Surface noise amplitude (m) for an organic silhouette. */
     noise: 0.45,
     /**
-     * Total virtual hay units in the initial pile. The GDD suggests ~150k; 290k puts the balance bot's
-     * completion at a ~56 min median over 50 seeds (see docs/DESIGN_DECISIONS.md D12).
+     * Total LOGICAL hay units in the initial pile (the geometry above is unchanged; only units per metre).
+     * RC2: 750k, chosen over 500k / 650k with 50 bot seeds each (docs/DESIGN_DECISIONS.md D15):
+     * median completion 64.7 min, P90 68.8, Vacuum Collector and Scanner MK2 used in 100 % of runs.
      */
-    totalUnits: 290_000,
+    totalUnits: 750_000,
     /** Max slope before hay slides (angle of repose), degrees. */
     reposeDeg: 40,
   },

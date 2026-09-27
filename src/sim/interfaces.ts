@@ -62,7 +62,8 @@ export interface IHayField {
   onExposed?: (id: number) => void;
 
   /** Build the initial pile + place needles in their depth bands (deterministic for a seed). */
-  generate(seed: number): void;
+  /** Fresh pile. `totalUnits` = logical hay units (default WORLD.pile.totalUnits); the geometry is the same. */
+  generate(seed: number, totalUnits?: number): void;
 
   /** Bilinear surface height at world (x,z); 0 where there is no hay. */
   heightAt(x: number, z: number): number;
@@ -217,7 +218,14 @@ export interface OrderRuntime {
   active?: boolean;
 }
 
-export interface UnlockCheck { ok: boolean; reason?: string; cost?: number }
+export interface UnlockCheck {
+  ok: boolean;
+  reason?: string;
+  /** WP cost of the next level. */
+  cost?: number;
+  /** Money cost of the next level (Level-system upgrades). */
+  money?: number;
+}
 
 export interface IProgression {
   money: number;
@@ -232,11 +240,12 @@ export interface IProgression {
 
   /** Computed stat value (base + tech effects + needle buffs). Cached; cheap to call. */
   stat(key: string): number;
+  /** "id" (owned at any level) or "id@N" (that technology at displayed Lv.N or higher). */
   isUnlocked(nodeId: string): boolean;
   nodeLevel(nodeId: string): number;
 
   canUnlock(nodeId: string): UnlockCheck;
-  /** Spend WP to unlock the next level of a node. Emits node:unlocked, recomputes stats. */
+  /** Spend WP (and Money for tech levels) to unlock the next level of a node. Emits node:unlocked, recomputes stats. */
   unlock(nodeId: string): boolean;
 
   /** Is the building type's plan unlocked? */

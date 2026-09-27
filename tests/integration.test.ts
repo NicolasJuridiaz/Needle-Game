@@ -8,6 +8,7 @@ import { WORLD } from '../src/config/world';
 import { Sim } from '../src/sim/sim';
 import type { Building } from '../src/sim/building';
 import type { BuildingType, Cell, ItemPacket, Rot } from '../src/sim/types';
+import { unlock } from './support/simKit';
 
 const DT = 0.05;
 
@@ -16,21 +17,6 @@ function run(sim: Sim, seconds: number): void {
   for (let i = 0; i < n; i++) sim.tick(DT);
 }
 
-/** Unlock every level of the given nodes (and their prerequisites) with granted WP. */
-function unlock(sim: Sim, ids: string[]): void {
-  sim.progress.addWP(10_000, 'milestone');
-  const byId = new Map(TECH_NODES.map((n) => [n.id, n]));
-  const want = new Set<string>();
-  const add = (id: string) => { if (want.has(id)) return; want.add(id); for (const r of byId.get(id)!.requires) add(r); };
-  ids.forEach(add);
-  for (let pass = 0; pass < 20; pass++) {
-    for (const id of want) {
-      while (sim.progress.canUnlock(id).ok) sim.progress.unlock(id);
-    }
-  }
-  for (const id of ids) expect(sim.progress.isUnlocked(id), `unlock ${id}`).toBe(true);
-  sim.rebuildTopology();
-}
 
 function rich(sim: Sim): void { sim.progress.addMoney(50_000_000, 'milestone'); }
 

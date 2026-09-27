@@ -6,7 +6,7 @@
  *   npm run balance:many -- --merge s0.json s1.json s2.json s3.json [--gaps]
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { TECH_NODES } from '../../src/config/techTree';
+import { displayLevel, TECH_NODES } from '../../src/config/techTree';
 import { Bot, fmt, type Gap } from './bot';
 
 const args = process.argv.slice(2);
@@ -42,10 +42,18 @@ interface SeedResult {
   /** WP earned during the run / WP spent on the Work Tree. */
   wpEarned: number;
   wpSpent: number;
+  /** Buildings by type at the end of the run. */
+  counts: Record<string, number>;
+  /** Displayed level of every technology at the end of the run. */
+  levels: Record<string, number>;
+  money: number;
+  moneyEarned: number;
+  /** Displayed levels bought / all displayed levels of the tree (Work Tree completion). */
+  levelsBought: number;
 }
 
 function runSeed(seed: number): SeedResult {
-  const bot = new Bot({ seed, maxMinutes: minutes, humanFactor: 1.15, verbose: false });
+  const bot = new Bot({ seed, maxMinutes: minutes, humanFactor: 1.15, pileUnits: arg('pile', 0) || undefined, verbose: false });
   const r = bot.run();
   const first: Record<string, number> = {};
   for (const [name, f] of MILESTONES) {
@@ -59,6 +67,11 @@ function runSeed(seed: number): SeedResult {
     gaps: bot.gaps(GAP),
     wpEarned: bot.sim.progress.stats.wpEarned,
     wpSpent: bot.sim.progress.stats.wpEarned - bot.sim.progress.wp,
+    counts: Object.fromEntries([...new Set([...bot.sim.buildings.values()].map((b) => b.type))].map((t) => [t, bot.sim.ownedCount(t)])),
+    levels: Object.fromEntries(TECH_NODES.map((t) => [t.id, displayLevel(t, bot.sim.progress.nodeLevel(t.id))])),
+    money: Math.round(bot.sim.progress.money),
+    moneyEarned: Math.round(bot.sim.progress.stats.moneyEarned),
+    levelsBought: TECH_NODES.reduce((a, t) => a + bot.sim.progress.nodeLevel(t.id), 0),
   };
 }
 
@@ -85,6 +98,13 @@ function report(results: SeedResult[], seconds: number): void {
   }
   const treeWP = TECH_NODES.reduce((a, t) => a + t.levels.reduce((b, l) => b + l.cost, 0), 0);
   console.log(`WP earned: ${stats(results.map((r) => r.wpEarned))} · Work Tree bought: ${stats(results.map((r) => (r.wpSpent / treeWP) * 100))} % of ${treeWP} WP`);
+  const avg = (f: (r: SeedResult) => number) => (results.reduce((a, r) => a + f(r), 0) / Math.max(1, n));
+  const c = (t: string) => (r: SeedResult) => r.counts[t] ?? 0;
+  const totalLevels = TECH_NODES.reduce((a, t) => a + t.levels.length, 0);
+  console.log(`factory at the end (avg): arms ${avg(c('roboticArm')).toFixed(1)} · rakes ${avg(c('pistonRake')).toFixed(1)} · collectors ${avg(c('vacuumCollector')).toFixed(1)} · scanners ${avg((r) => c('scannerMk1')(r) + c('scannerMk2')(r)).toFixed(1)} · generators ${avg(c('hayGenerator')).toFixed(1)} · processing ${avg((r) => c('compressor')(r) + c('wrapper')(r) + c('silo')(r)).toFixed(1)} · belt tiles ${avg(c('conveyor')).toFixed(0)} · buildings ${avg((r) => Object.values(r.counts).reduce((a, b) => a + b, 0)).toFixed(0)}`);
+  console.log(`tech: levels bought ${avg((r) => r.levelsBought).toFixed(1)} / ${totalLevels} (${((avg((r) => r.levelsBought) / totalLevels) * 100).toFixed(0)} %) · Hay Sell Value Lv ${avg((r) => r.levels.e_hay_value).toFixed(1)} · money earned ${Math.round(avg((r) => r.moneyEarned)).toLocaleString('en-US')} · final money ${Math.round(avg((r) => r.money)).toLocaleString('en-US')}`);
+  const main = ['p_hands', 'p_shovel', 'x_hopper', 'x_rake', 'x_arm', 'x_collector', 'l_conveyor', 'd_scanner', 'e_silo', 'e_compressor', 'e_wrapper', 'f_generator', 'f_pole'];
+  console.log(`avg levels: ${main.map((id) => `${id} ${avg((r) => r.levels[id] ?? 0).toFixed(1)}`).join(' · ')}`);
   const share = (rs: SeedResult[], name: string) => stats(rs.map((r) => (r.first[name] / r.end) * 100));
   console.log(`Vacuum Collector used >= 2 min before the end: ${col.length}/${n} (${Math.round((col.length / n) * 100)}%), placed at ${share(col, 'collector')} % of the run`);
   console.log(`Scanner MK2 used >= 2 min before the end:      ${mk2.length}/${n} (${Math.round((mk2.length / n) * 100)}%), placed at ${share(mk2, 'MK2')} % of the run`);

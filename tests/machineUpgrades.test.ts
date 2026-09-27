@@ -6,12 +6,14 @@
  *     entry, gated ports must appear, mode nodes must add a splitter mode;
  *  2. behaviour with the REAL Sim (before/after, with and without the node) for at least one upgrade per
  *     family that tests/upgrades.test.ts does not already cover.
- * Nodes are unlocked with granted WP (costs are irrelevant here and may be re-tuned freely).
+ * Technologies are unlocked with granted WP and Money (costs are irrelevant here and may be re-tuned freely).
+ * A NodeSpec [id, n] means "technology `id` with n levels bought" (Lv.n for plan technologies).
  */
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../src/config/balance';
 import { BUILDABLES } from '../src/config/buildables';
-import { TECH_NODES, type TechNode } from '../src/config/techTree';
+import { displayLevel, parseRequirement, TECH_NODES, type TechNode } from '../src/config/techTree';
+import { grantTech } from './support/simKit';
 import { WORLD } from '../src/config/world';
 import { EventBus } from '../src/core/events';
 import { Building, type BuildingInit } from '../src/sim/building';
@@ -39,8 +41,7 @@ const FAMILIES: Family[] = [
   { name: 'Vacuum Collector', types: ['vacuumCollector'], stats: ['collector.'] },
   { name: 'Conveyor', types: ['conveyor', 'conveyorRamp', 'beltLift'], stats: ['belt.', 'global.autoRoute'] },
   { name: 'Splitters', types: ['splitter', 'uSplitter', 'merger', 'uMerger'], stats: [] },
-  { name: 'Scanner MK1', types: ['scannerMk1'], stats: ['scanner.'] },
-  { name: 'Scanner MK2', types: ['scannerMk2'], stats: ['scanner2.'] },
+  { name: 'Scanner (MK1 -> MK2)', types: ['scannerMk1', 'scannerMk2'], stats: ['scanner.', 'scanner2.'] },
   { name: 'Silo', types: ['silo'], stats: ['silo.'] },
   { name: 'Compressor', types: ['compressor'], stats: ['compressor.', 'econ.baleValue'] },
   { name: 'Wrapper', types: ['wrapper'], stats: ['wrapper.', 'econ.wrappedValue'] },
@@ -60,14 +61,20 @@ function fresh(): Progression {
   return p;
 }
 
-/** Unlocks the prerequisites of `id` (recursively, level 1 each — the minimum the tree asks for). */
+/** Unlocks the prerequisites of `id` (recursively, the minimum level each requirement asks for). */
 function unlockRequires(p: Progression, id: string): boolean {
-  for (const r of BY_ID.get(id)!.requires) {
-    if (p.isUnlocked(r)) continue;
-    if (!unlockRequires(p, r) || !p.unlock(r)) return false;
-  }
+  for (const r of BY_ID.get(id)!.requires) if (!p.isUnlocked(r)) grantTech(p, r);
   return true;
 }
+/** Satisfies the per-level requirements of the next level of `id`. */
+function levelRequires(p: Progression, id: string): void {
+  for (const r of BY_ID.get(id)!.levels[p.nodeLevel(id)]?.req ?? []) if (!p.isUnlocked(r)) grantTech(p, r);
+}
+/** Buildings unlocked by a technology level instead of a plan node (Scanner MK2 = Needle Scanner Lv.5). */
+const levelUnlocks = (t: BuildingType): [string, number] | null => {
+  const r = BUILDABLES[t].requiresNode;
+  return r && r.includes('@') ? parseRequirement(r) : null;
+};
 
 /** Value of `stat`'s effect in `nodeId` level `level` (so behaviour expectations follow the tree). */
 function effectValue(nodeId: string, stat: string, level = 1): number {
@@ -98,7 +105,8 @@ function familyNodes(f: Family): TechNode[] {
   return TECH_NODES.filter((n) =>
     n.levels.some((l) => l.effects.some((e) => matches(e.stat, f.stats)))
     || (n.unlocks?.building ?? []).some((t) => f.types.includes(t))
-    || f.types.some((t) => portDefs(t).some((pd) => pd.requiresNode === n.id))
+    || f.types.some((t) => portDefs(t).some((pd) => pd.requiresNode !== undefined && parseRequirement(pd.requiresNode)[0] === n.id))
+    || f.types.some((t) => levelUnlocks(t)?.[0] === n.id)
     || (f.name === 'Splitters' && MODE_NODES.has(n.id)));
 }
 
@@ -116,7 +124,8 @@ function expectedAfter(p: Progression, e: Effect, before: number): number {
 function checkLevel(f: Family, node: TechNode, li: number): void {
   const p = fresh();
   expect(unlockRequires(p, node.id), `prerequisites of ${node.id}`).toBe(true);
-  for (let k = 0; k < li; k++) expect(p.unlock(node.id)).toBe(true);
+  for (let k = 0; k < li; k++) { levelRequires(p, node.id); expect(p.unlock(node.id)).toBe(true); }
+  levelRequires(p, node.id);
   const effects = node.levels[li].effects;
   const stats = [...new Set(effects.map((e) => e.stat))];
   const before = new Map(stats.map((s) => [s, p.stat(s)]));
@@ -136,16 +145,22 @@ function checkLevel(f: Family, node: TechNode, li: number): void {
     expect(a, `${s}: ${b} -> ${a}, the effect implies ${x}`).toBeCloseTo(x, 6);
     checks++;
   }
-  // Plans open the shop entry of this family's buildings.
+  // Plans (and levels that unlock a building) open the shop entry of this family's buildings.
   for (const [i, t] of f.types.entries()) {
-    if (!(node.unlocks?.building ?? []).includes(t) || li > 0) continue;
+    const lu = levelUnlocks(t);
+    const opens = lu ? lu[0] === node.id && displayLevel(node, li + 1) === lu[1] : (node.unlocks?.building ?? []).includes(t) && li === 0;
+    if (!opens) continue;
     expect(shop[i], `${t} purchasable before ${node.id}`).toBe(false);
     expect(p.buildingUnlocked(t), `${t} purchasable after ${node.id}`).toBe(true);
     checks++;
   }
-  // Gated ports appear.
+  // Gated ports appear (at the level they name).
   for (const [i, t] of f.types.entries()) {
-    if (!portDefs(t).some((pd) => pd.requiresNode === node.id)) continue;
+    if (!portDefs(t).some((pd) => {
+      if (pd.requiresNode === undefined) return false;
+      const [rid, lv] = parseRequirement(pd.requiresNode);
+      return rid === node.id && (pd.requiresNode.includes('@') ? displayLevel(node, li + 1) === lv : li === 0);
+    })) continue;
     expect(portCount(p, t), `${t} ports after ${node.id}`).toBeGreaterThan(ports[i]);
     checks++;
   }
@@ -163,9 +178,10 @@ describe('machine upgrades: every node of every family (table-driven from TECH_N
     describe(f.name, () => {
       const nodes = familyNodes(f);
       it('has at least one upgrade besides its plans', () => {
-        expect(nodes.filter((n) => !(n.unlocks?.building ?? []).some((t) => f.types.includes(t))).length).toBeGreaterThan(0);
-        // Every building of the family has a plan node in the list.
-        for (const t of f.types) expect(nodes.some((n) => n.unlocks?.building?.includes(t)), `${t} plan`).toBe(true);
+        // Upgrades: levels after the plans (Level system) or separate upgrade/feature nodes.
+        expect(nodes.reduce((a, n) => a + n.levels.length, 0) - nodes.filter((n) => n.kind === 'plan').length).toBeGreaterThan(0);
+        // Every building of the family has a plan node (or technology level) in the list.
+        for (const t of f.types) expect(nodes.some((n) => n.unlocks?.building?.includes(t) || levelUnlocks(t)?.[0] === n.id), `${t} plan`).toBe(true);
       });
       for (const n of nodes) {
         n.levels.forEach((lv, li) => {
@@ -232,11 +248,11 @@ function sink(sim: Sim, x: number, z: number): Sink {
 
 type NodeSpec = string | [string, number];
 
-/** Unlocks `id` up to `level` (prerequisites at level 1 first), with granted WP. */
+/** Unlocks `id` up to `level` levels bought (requirements first), with granted WP and Money. */
 function unlock(sim: Sim, id: string, level = 1): void {
-  sim.progress.addWP(1e6, 'milestone');
-  for (const r of BY_ID.get(id)!.requires) if (!sim.progress.isUnlocked(r)) unlock(sim, r, 1);
-  while (sim.progress.nodeLevel(id) < level) expect(sim.progress.unlock(id), `unlock ${id}`).toBe(true);
+  const node = BY_ID.get(id)!;
+  grantTech(sim.progress, `${id}@${displayLevel(node, level)}`);
+  sim.rebuildTopology();
 }
 function unlockAll(sim: Sim, nodes: NodeSpec[]): void {
   for (const n of nodes) typeof n === 'string' ? unlock(sim, n) : unlock(sim, n[0], n[1]);
@@ -302,21 +318,21 @@ const QZ = -18; // quiet floor strip north of the pile
 
 describe('machine upgrades: behaviour (real Sim)', () => {
   // ----- Hopper ------------------------------------------------------------------------------------
-  it('Hopper Capacity: an existing hopper holds exactly hopper.capacity after the upgrade', () => {
+  it('Hopper Lv.2: an existing hopper holds exactly hopper.capacity after the upgrade', () => {
     const sim = newSim(['x_hopper']);
     const h = place(sim, 'hopper', -20, QZ);
     sim.player.carry.add('hay', 5000);
     expect(h.interact(sim)).toBe(true);
     const base = h.contents().hay;
     expect(base).toBeCloseTo(sim.stat('hopper.capacity'), 6);
-    unlock(sim, 'x_hopper_cap');
+    unlock(sim, 'x_hopper', 2); // Hopper Lv.2
     expect(h.interact(sim)).toBe(true);
     expect(h.contents().hay).toBeCloseTo(sim.stat('hopper.capacity'), 6);
     expect(h.contents().hay).toBeGreaterThan(base);
   });
 
-  it('Dual Hopper Output: the second port appears on an existing hopper and carries items', () => {
-    const sim = newSim(['x_hopper', 'x_hopper_out']);
+  it('Hopper Lv.5: the second port appears on an existing hopper and carries items', () => {
+    const sim = newSim([['x_hopper', 3]]);
     flood(sim, -21, QZ, 0);
     const h = place(sim, 'hopper', -20, QZ);
     const a = sink(sim, -18, QZ);
@@ -327,7 +343,7 @@ describe('machine upgrades: behaviour (real Sim)', () => {
     expect(b.got).toBe(0);
     const single = a.got / 10;
     expect(single).toBeGreaterThan(sim.stat('hopper.outputRate') * 0.85);
-    unlock(sim, 'x_hopper_dual');
+    unlock(sim, 'x_hopper', 5);
     run(sim, 1);
     expect(h.outPorts()).toHaveLength(2);
     const a0 = a.got, b0 = b.got;
@@ -351,8 +367,8 @@ describe('machine upgrades: behaviour (real Sim)', () => {
     expect(hopper.contents().hay).toBeGreaterThan(100);
   });
 
-  it('Rake Width raises the hay raked per cycle', () => {
-    const [a, b] = compare(['x_rake', 'x_rake_auto'], [['x_rake_width', 2]], (sim) => {
+  it('Piston Rake Lv.3 (faster + wider) raises the hay raked per second', () => {
+    const [a, b] = compare(['x_rake', 'x_rake_auto'], [['x_rake', 3]], (sim) => {
       generator(sim, EDGE - 8, -5);
       place(sim, 'pistonRake', EDGE - 2, -1, 0);
       sink(sim, EDGE - 3, 0); // chute
@@ -371,13 +387,13 @@ describe('machine upgrades: behaviour (real Sim)', () => {
     return { metric: () => s.got };
   }
 
-  it('Faster Servos raise robotic arm throughput', () => {
-    const [a, b] = compare(['x_arm'], [['x_arm_speed', 2]], armRig, 5, 60);
+  it('Robotic Arm Lv.3 (bigger claw + faster servos) raises arm throughput', () => {
+    const [a, b] = compare(['x_arm'], [['x_arm', 3]], armRig, 5, 60);
     expect(a).toBeGreaterThan(5);
     expect(b).toBeGreaterThan(a * 1.15);
   });
 
-  it('Extended Arm: hay just beyond the base reach becomes reachable', () => {
+  it('Robotic Arm Lv.4: hay just beyond the base reach becomes reachable', () => {
     const probe = newSim([]);
     const reach0 = probe.stat('arm.reach');
     let x = -20;
@@ -395,11 +411,11 @@ describe('machine upgrades: behaviour (real Sim)', () => {
       return sim.progress.stats.hayExtractedArm;
     };
     expect(extracted(['x_arm'])).toBe(0);
-    expect(extracted(['x_arm', 'x_arm_reach'])).toBeGreaterThan(0);
+    expect(extracted([['x_arm', 4]])).toBeGreaterThan(0);
   });
 
-  it('Robotic Arm MK2 raises arm throughput', () => {
-    const [a, b] = compare(['x_arm', 'x_arm_speed', 'x_arm_grab'], ['x_arm_mk2'], armRig, 5, 60);
+  it('Robotic Arm Lv.5 (Advanced) raises arm throughput', () => {
+    const [a, b] = compare([['x_arm', 4]], [['x_arm', 5]], armRig, 5, 60);
     expect(a).toBeGreaterThan(5);
     expect(b).toBeGreaterThan(a * 1.2);
   });
@@ -410,7 +426,7 @@ describe('machine upgrades: behaviour (real Sim)', () => {
    * while the pile does not shrink). Big claw (MK2) and a long run so the heap has time to spread.
    */
   it('an unlinked arm never re-grabs the hay it dumped on the floor (MK2 claw)', () => {
-    const sim = newSim(['x_arm', 'x_arm_speed', 'x_arm_grab', 'x_arm_mk2']);
+    const sim = newSim([['x_arm', 5]]);
     generator(sim, EDGE - 6, -2);
     const arm = place(sim, 'roboticArm', EDGE - 1, 0, 2); // drops west, the pile is east
     const cx = arm.center.x;
@@ -422,18 +438,18 @@ describe('machine upgrades: behaviour (real Sim)', () => {
   });
 
   // ----- Vacuum Collector --------------------------------------------------------------------------
-  it('Collector Suction raises hay sucked per second', () => {
-    const [a, b] = compare(['x_collector'], ['x_col_suction'], (sim) => {
+  it('Vacuum Collector Lv.3 raises hay sucked per second by its suction multiplier', () => {
+    const [a, b] = compare([['x_collector', 2]], [['x_collector', 3]], (sim) => {
       generator(sim, EDGE - 3, -5);
       place(sim, 'vacuumCollector', EDGE - 3, -1, 0);
       sink(sim, EDGE - 4, 0);
       return { metric: () => sim.progress.stats.hayExtractedMachine };
     }, 1, 8);
     expect(a).toBeGreaterThan(40);
-    expect(Math.abs(b / a / effectValue('x_col_suction', 'collector.rate') - 1)).toBeLessThan(0.1);
+    expect(Math.abs(b / a / effectValue('x_collector', 'collector.rate', 3) - 1)).toBeLessThan(0.1);
   });
 
-  it('Collector Radius: hay beyond the base radius gets collected', () => {
+  it('Vacuum Collector Lv.2: hay beyond the base radius gets collected', () => {
     const probe = newSim([]);
     const r0 = probe.stat('collector.radius');
     let x = -24;
@@ -451,7 +467,7 @@ describe('machine upgrades: behaviour (real Sim)', () => {
       return sim.progress.stats.hayExtractedMachine;
     };
     expect(collected(['x_collector'])).toBe(0);
-    expect(collected(['x_collector', 'x_col_radius'])).toBeGreaterThan(50);
+    expect(collected([['x_collector', 2]])).toBeGreaterThan(50);
   });
 
   // ----- Conveyor ----------------------------------------------------------------------------------
@@ -468,16 +484,15 @@ describe('machine upgrades: behaviour (real Sim)', () => {
     return { rate: (s.got - g0) / 30, nominal: (sim.stat('belt.speed') / sim.stat('belt.spacing')) * BALANCE.hayPacketSize };
   }
 
-  it('Belt Capacity raises the throughput of a machine-fed line (at Belt Speed I)', () => {
-    const a = beltLine([['l_speed', 1]]).rate;
-    const b = beltLine([['l_speed', 1], 'l_capacity']).rate;
+  it('Conveyor Lv.4 (tighter packing) raises the throughput of a machine-fed line', () => {
+    const a = beltLine([['l_conveyor', 3]]).rate;
+    const b = beltLine([['l_conveyor', 4]]).rate;
     expect(a).toBeGreaterThan(60);
     expect(b).toBeGreaterThan(a * 1.2);
   });
 
-  /** Base, every Belt Speed level, and Belt Capacity on top of each (derived from the tree). */
-  const BELT_CONFIGS: NodeSpec[][] = [['l_conveyor']];
-  for (let l = 1; l <= BY_ID.get('l_speed')!.levels.length; l++) BELT_CONFIGS.push([['l_speed', l]], [['l_speed', l], 'l_capacity']);
+  /** Every Conveyor Network level (derived from the tree). */
+  const BELT_CONFIGS: NodeSpec[][] = BY_ID.get('l_conveyor')!.levels.map((_, i): NodeSpec[] => [['l_conveyor', i + 1]]);
 
   /**
    * Belt ends are not quantized to whole ticks: a machine may push a packet onto a belt as soon as the last item
@@ -525,7 +540,8 @@ describe('machine upgrades: behaviour (real Sim)', () => {
         const r = rig(sim);
         if (mode === 'smart') r.src.make = (i) => (i % 2 === 0 ? { type: 'hay', amount: 10 } : { type: 'bale', amount: 1 });
         // Not reachable by the player before the node (its prerequisites already unlocked).
-        for (const req of BY_ID.get(nodeId)!.requires) unlock(sim, req);
+        for (const req of BY_ID.get(nodeId)!.requires) grantTech(sim.progress, req);
+        sim.rebuildTopology();
         expect(r.sp.availableModes(sim)).not.toContain(mode);
         const seen: string[] = [];
         for (let i = 0; i < 12; i++) { r.sp.interact(sim); seen.push(r.sp.mode); }
@@ -570,7 +586,7 @@ describe('machine upgrades: behaviour (real Sim)', () => {
   });
 
   // ----- Scanners ----------------------------------------------------------------------------------
-  it('Auto Needle Eject: the MK1 scanner keeps scanning through a needle instead of stopping', () => {
+  it('Scanner Lv.4 (auto eject): the MK1 scanner keeps scanning through a needle instead of stopping', () => {
     const scanned = (nodes: NodeSpec[]): { hay: number; alarms: number } => {
       const sim = newSim(['d_scanner', 'f_generator', ...nodes]);
       generator(sim, -22, -21);
@@ -586,8 +602,8 @@ describe('machine upgrades: behaviour (real Sim)', () => {
       expect(sim.progress.needlesFound).toContain(needle.id);
       return { hay: sim.progress.stats.hayScanned, alarms };
     };
-    const off = scanned([]);
-    const on = scanned(['d_eject']);
+    const off = scanned([['d_scanner', 3]]);
+    const on = scanned([['d_scanner', 4]]);
     expect(off.alarms).toBe(1);
     expect(on.alarms).toBe(0);
     expect(on.hay).toBeGreaterThan(off.hay * 2);
@@ -604,17 +620,22 @@ describe('machine upgrades: behaviour (real Sim)', () => {
     return { sc, a, b, each };
   }
 
-  it('Scanner MK2 Speed raises MK2 throughput by its multiplier', () => {
-    const [a, b] = compare(['d_mk2', 'f_generator'], ['d_mk2_speed'], (sim) => {
-      const r = mk2Rig(sim);
-      return { metric: () => sim.progress.stats.hayScanned, each: r.each };
-    }, 2, 20);
-    expect(a).toBeGreaterThan(150);
-    expect(Math.abs(b / a / effectValue('d_mk2_speed', 'scanner2.speedMul') - 1)).toBeLessThan(0.07);
+  it('Scanner Lv.5: MK2 plans; the MK2 scans batch x speed / cycle on one lane', () => {
+    expect(newSim([['d_scanner', 4]]).progress.buildingUnlocked('scannerMk2')).toBe(false);
+    const sim = newSim([['d_scanner', 5], 'f_generator']);
+    expect(sim.progress.buildingUnlocked('scannerMk2')).toBe(true);
+    const r = mk2Rig(sim);
+    run(sim, 2, r.each);
+    const s0 = sim.progress.stats.hayScanned;
+    run(sim, 20, r.each);
+    const rate = (sim.progress.stats.hayScanned - s0) / 20;
+    const nominal = (sim.stat('scanner2.batch') * sim.stat('scanner2.speedMul')) / sim.stat('scanner2.cycle');
+    expect(rate).toBeGreaterThan(150);
+    expect(Math.abs(rate / nominal - 1)).toBeLessThan(0.07);
   });
 
   it('Dual Lane Scan: lane B ports appear on an existing MK2 and double its throughput', () => {
-    const sim = newSim(['d_mk2', 'f_generator']);
+    const sim = newSim([['d_scanner', 5], 'f_generator']);
     const r = mk2Rig(sim);
     expect(r.sc.ports).toHaveLength(2);
     expect(r.sc.canAccept({ type: 'hay', amount: 10 }, 2, sim)).toBe(false);
@@ -636,7 +657,7 @@ describe('machine upgrades: behaviour (real Sim)', () => {
   });
 
   // ----- Silo --------------------------------------------------------------------------------------
-  it('Silo Capacity: an existing silo holds exactly silo.capacity at every level', () => {
+  it('Silo: an existing silo holds exactly silo.capacity at every level, growing where the level says so', () => {
     const sim = newSim(['e_silo']);
     const silo = place(sim, 'silo', -24, QZ, 0);
     const stored: number[] = [];
@@ -648,12 +669,19 @@ describe('machine upgrades: behaviour (real Sim)', () => {
       expect(stored[stored.length - 1], `level ${stored.length - 1}`).toBeCloseTo(sim.stat('silo.capacity'), 6);
     };
     deposit();
-    for (let l = 1; l <= BY_ID.get('e_silo_cap')!.levels.length; l++) { unlock(sim, 'e_silo_cap', l); deposit(); }
-    for (let i = 1; i < stored.length; i++) expect(stored[i], `level ${i}`).toBeGreaterThan(stored[i - 1]);
+    const levels = BY_ID.get('e_silo')!.levels;
+    for (let l = 2; l <= levels.length; l++) {
+      unlock(sim, 'e_silo', l);
+      deposit();
+      const grows = levels[l - 1].effects.some((e) => e.stat === 'silo.capacity');
+      if (grows) expect(stored[stored.length - 1], `Lv.${l}`).toBeGreaterThan(stored[stored.length - 2]);
+      else expect(stored[stored.length - 1], `Lv.${l}`).toBe(stored[stored.length - 2]);
+    }
+    expect(stored[stored.length - 1]).toBeGreaterThanOrEqual(stored[0] * 8);
   });
 
-  it('Silo Output multiplies the unload rate', () => {
-    const [a, b] = compare(['e_silo'], ['e_silo_out'], (sim) => {
+  it('Silo Lv.3 multiplies the unload rate', () => {
+    const [a, b] = compare([['e_silo', 2]], [['e_silo', 3]], (sim) => {
       const silo = place(sim, 'silo', -24, QZ, 0);
       const s = sink(sim, -21, QZ + 1);
       sim.player.carry.add('hay', 2000);
@@ -661,30 +689,30 @@ describe('machine upgrades: behaviour (real Sim)', () => {
       return { metric: () => s.got };
     }, 2, 10);
     expect(a).toBeGreaterThan(30);
-    expect(Math.abs(b / a / effectValue('e_silo_out', 'silo.outputRate') - 1)).toBeLessThan(0.1);
+    expect(Math.abs(b / a / effectValue('e_silo', 'silo.outputRate', 3) - 1)).toBeLessThan(0.1);
   });
 
   // ----- Compressor & Wrapper ----------------------------------------------------------------------
-  it('Double Chamber multiplies compressor bale output by its chamber count', () => {
-    const [a, b] = compare(['e_compressor', 'e_comp_speed', 'f_generator'], ['e_double_chamber'], (sim) => {
+  it('Compressor Lv.5 (double chamber) multiplies bale output by its chamber count', () => {
+    const [a, b] = compare([['e_compressor', 4], 'f_generator'], [['e_compressor', 5]], (sim) => {
       generator(sim, -22, -21);
       const c = place(sim, 'compressor', -22, -16, 0);
       const s = sink(sim, -19, -16);
       return { metric: () => s.count('bale'), each: () => { fill(sim, c, 0, () => ({ type: 'hay', amount: 10 })); } };
     }, 3, 20);
     expect(a).toBeGreaterThan(1);
-    expect(Math.abs(b / a / effectValue('e_double_chamber', 'compressor.chambers') - 1)).toBeLessThan(0.1);
+    expect(Math.abs(b / a / effectValue('e_compressor', 'compressor.chambers', 5) - 1)).toBeLessThan(0.1);
   });
 
-  it('Wrap Speed raises wrapped bales per second by its cycle multiplier', () => {
-    const [a, b] = compare(['e_wrapper', 'f_generator'], ['e_wrap_speed'], (sim) => {
+  it('Wrapper Lv.2 raises wrapped bales per second by its cycle multiplier', () => {
+    const [a, b] = compare(['e_wrapper', 'f_generator'], [['e_wrapper', 2]], (sim) => {
       generator(sim, -22, -21);
       const w = place(sim, 'wrapper', -22, -16, 0);
       const s = sink(sim, -19, -16);
       return { metric: () => s.count('wrapped'), each: () => { fill(sim, w, 0, () => ({ type: 'bale', amount: 1 })); } };
     }, 3, 40);
     expect(a).toBeGreaterThan(0.8);
-    expect(Math.abs(b / a / (1 / effectValue('e_wrap_speed', 'wrapper.cycle')) - 1)).toBeLessThan(0.07);
+    expect(Math.abs(b / a / (1 / effectValue('e_wrapper', 'wrapper.cycle', 2)) - 1)).toBeLessThan(0.07);
   });
 
   /** Measured output per second of a machine kept saturated (fed directly, output into a sink). */
@@ -704,11 +732,11 @@ describe('machine upgrades: behaviour (real Sim)', () => {
       : type === 'wrapper' ? 1 / st('wrapper.cycle') : st('scanner.batch') / st('scanner.cycle');
     return { measured: (metric() - m0) / 60, nominal };
   }
-  const levelsOf = (base: string, node: string): NodeSpec[][] =>
-    [[base], ...BY_ID.get(node)!.levels.map((_, i): NodeSpec[] => [base, [node, i + 1]])];
+  /** Every level of a technology, as NodeSpecs. */
+  const levelsOf = (node: string): NodeSpec[][] => BY_ID.get(node)!.levels.map((_, i): NodeSpec[] => [[node, i + 1]]);
 
-  it('Scan Speed: the MK1 scanner delivers exactly batch / cycle at every level', () => {
-    for (const nodes of levelsOf('d_scanner', 'd_speed')) {
+  it('Scanner: the MK1 scanner delivers exactly batch / cycle at every level', () => {
+    for (const nodes of levelsOf('d_scanner')) {
       const r = processRate('scannerMk1', nodes);
       expect(r.measured / r.nominal, `${JSON.stringify(nodes)}: ${r.measured} vs ${r.nominal}`).toBeCloseTo(1, 2);
     }
@@ -721,8 +749,8 @@ describe('machine upgrades: behaviour (real Sim)', () => {
    */
   it('Compressor and Wrapper deliver their nominal rate at every speed level', () => {
     for (const [type, nodes] of [
-      ...levelsOf('e_compressor', 'e_comp_speed').map((n) => ['compressor', n] as const),
-      ...levelsOf('e_wrapper', 'e_wrap_speed').map((n) => ['wrapper', n] as const),
+      ...levelsOf('e_compressor').map((n) => ['compressor', n] as const),
+      ...levelsOf('e_wrapper').map((n) => ['wrapper', n] as const),
     ]) {
       const r = processRate(type, nodes);
       const itemsOff = Math.abs(r.measured - r.nominal) * 60;
@@ -731,39 +759,38 @@ describe('machine upgrades: behaviour (real Sim)', () => {
   });
 
   // ----- Generator ---------------------------------------------------------------------------------
-  /** Generator + a fixed 30 P consumer; returns [hay burned per s, supply]. */
-  function generatorRun(nodes: NodeSpec[]): [number, number] {
+  /** Generator + a fixed consumer (30 P, or an overload that keeps it at full load); returns [hay burned per s, supply]. */
+  function generatorRun(nodes: NodeSpec[], draw = 30): [number, number] {
     const sim = newSim(nodes);
     const g = generator(sim, -24, QZ);
     const c = g.center;
-    const load = new FixedLoad({ id: nextId++, type: 'wrapper', cell: { x: Math.floor(c.x) + 3, z: Math.floor(c.z), level: 0 }, rot: 0 }, 30);
+    const load = new FixedLoad({ id: nextId++, type: 'wrapper', cell: { x: Math.floor(c.x) + 3, z: Math.floor(c.z), level: 0 }, rot: 0 }, draw);
     sim.buildings.set(load.id, load);
     sim.markTopologyDirty();
     run(sim, 1);
     const h0 = sim.progress.stats.hayBurned;
     run(sim, 20);
     expect(load.network).toBe(g.network);
-    expect(load.powerSatisfaction).toBe(1);
+    if (draw <= 30) expect(load.powerSatisfaction).toBe(1);
     return [(sim.progress.stats.hayBurned - h0) / 20, sim.power.totalSupply];
   }
 
-  it('Fuel Efficiency: less hay burned for the same load and the same power', () => {
-    const [burnA, supplyA] = generatorRun(['f_firebox']);
-    const [burnB, supplyB] = generatorRun(['f_firebox', 'f_fuel_eff']);
-    const mul = effectValue('f_fuel_eff', 'generator.burnRate');
-    expect(burnA).toBeGreaterThan(0.2);
-    expect(burnB / burnA).toBeCloseTo(mul, 2);
-    expect(supplyB).toBeCloseTo(supplyA, 6);
+  it('Generator Lv.3: more power and less hay burned at full load', () => {
+    const [burnA, supplyA] = generatorRun([['f_generator', 2]], 1000);
+    const [burnB, supplyB] = generatorRun([['f_generator', 3]], 1000);
+    expect(burnA).toBeGreaterThan(1);
+    expect(burnB / burnA).toBeCloseTo(effectValue('f_generator', 'generator.burnRate', 3), 2);
+    expect(supplyB / supplyA).toBeCloseTo(effectValue('f_generator', 'generator.output', 3), 2);
   });
 
-  it('Industrial Generator: generators make 2x power (on top of Generator Output)', () => {
-    const [, supplyA] = generatorRun(['f_gen_output', 'f_fuel_eff']);
-    const [, supplyB] = generatorRun(['f_gen_output', 'f_fuel_eff', 'f_industrial_gen']);
-    expect(supplyB / supplyA).toBeCloseTo(effectValue('f_industrial_gen', 'generator.output'), 2);
+  it('Generator Lv.5 (Industrial): output multiplied on top of Lv.4', () => {
+    const [, supplyA] = generatorRun([['f_generator', 4]]);
+    const [, supplyB] = generatorRun([['f_generator', 5]]);
+    expect(supplyB / supplyA).toBeCloseTo(effectValue('f_generator', 'generator.output', 5), 2);
   });
 
   // ----- Power Poles -------------------------------------------------------------------------------
-  it('Pole Range: a consumer out of the base pole range gets powered after the upgrade', () => {
+  it('Power Pole Lv.2: a consumer out of the base pole range gets powered after the upgrade', () => {
     const sim = newSim(['f_pole', 'e_compressor']);
     const g = generator(sim, -28, -20);
     const pole = place(sim, 'powerPole', -21, -19, 0);
@@ -774,7 +801,7 @@ describe('machine upgrades: behaviour (real Sim)', () => {
     expect(pole.network).toBe(g.network);
     expect(comp.network).toBe(-1);
     expect(comp.status).toBe('noPower');
-    unlock(sim, 'f_pole_range');
+    unlock(sim, 'f_pole', 2);
     expect(d).toBeLessThanOrEqual(sim.stat('pole.range'));
     run(sim, 0.5);
     expect(comp.network).toBe(g.network);
@@ -782,7 +809,7 @@ describe('machine upgrades: behaviour (real Sim)', () => {
     expect(sim.power.feeds.some((f) => f.from === pole.id && f.to === comp.id)).toBe(true);
   });
 
-  it('Connection Limit: the 7th machine on a pole gets powered after the upgrade', () => {
+  it('Power Pole Lv.3: the 7th machine on a pole gets powered after the upgrade', () => {
     const sim = newSim(['f_pole', 'x_arm']);
     const g = generator(sim, -28, -20);
     const pole = place(sim, 'powerPole', -20, -19, 0);
@@ -793,22 +820,22 @@ describe('machine upgrades: behaviour (real Sim)', () => {
     const fed = () => arms.filter((a) => a.network === g.network).length;
     expect(fed()).toBe(base);
     expect(arms[arms.length - 1].network).toBe(-1);
-    unlock(sim, 'f_pole_conn');
+    unlock(sim, 'f_pole', 3);
     run(sim, 0.5);
     expect(fed()).toBe(arms.length);
     expect(sim.power.feeds.filter((f) => f.from === pole.id).length).toBe(arms.length);
   });
 
-  it('Power Loss Reduction raises delivered supply accordingly', () => {
+  it('Power Pole Lv.4 (loss reduction) raises delivered supply accordingly', () => {
     const supply = (nodes: NodeSpec[]): number => {
       const sim = newSim(['f_pole', ...nodes]);
       generator(sim, -24, QZ);
       run(sim, 1);
       return sim.power.totalSupply;
     };
-    const a = supply(['f_pole_range']);
-    const b = supply(['f_pole_range', 'f_power_loss']);
-    const lossAfter = effectValue('f_power_loss', 'power.loss');
+    const a = supply([['f_pole', 3]]);
+    const b = supply([['f_pole', 4]]);
+    const lossAfter = effectValue('f_pole', 'power.loss', 4);
     expect(b / a).toBeCloseTo((1 - lossAfter) / (1 - newSim([]).stat('power.loss')), 4);
   });
 });

@@ -13,7 +13,7 @@
  */
 import { BALANCE } from '../../src/config/balance';
 import { ORDER_BY_ID } from '../../src/config/orders';
-import { TECH_BY_ID } from '../../src/config/techTree';
+import { displayLevel, maxDisplayLevel, TECH_BY_ID } from '../../src/config/techTree';
 import { WORLD } from '../../src/config/world';
 import type { Building } from '../../src/sim/building';
 import { buildingCenter, localToOffset, rotatedSize } from '../../src/sim/grid';
@@ -32,6 +32,8 @@ export interface BotOptions {
   /** Extra human overhead multiplier on action durations (1.15 = 15% slower than perfect). */
   humanFactor: number;
   verbose: boolean;
+  /** Logical hay units of the pile (default WORLD.pile.totalUnits). */
+  pileUnits?: number;
 }
 
 /** State captured at every meaningful decision (gap analysis). */
@@ -50,21 +52,26 @@ export interface Snapshot {
 const DT = BALANCE.tickDt;
 
 /**
- * Work Tree priority, roughly the GDD's intended order. The bot SAVES for the first node it can reach
- * (prerequisites met) instead of spending WP on anything cheaper further down.
+ * Research plan, roughly the GDD's intended order: [technology, displayed level]. The bot SAVES WP for the
+ * first step it can reach instead of spending WP further down; a step that also costs Money reserves that
+ * money (machines wait) unless the wait drags on.
  */
-const TECH_PRIORITY: string[] = [
-  'p_grab', 'p_carry', 'p_shovel', 'p_bucket', 'p_detector', 'p_pitchfork', 'p_wide_shovel', 'p_quick_scoop', 'p_wheelbarrow',
-  'x_hopper', 'f_generator', 'x_rake', 'l_conveyor', 'f_pole', 'x_rake_auto', 'l_splitter', 'p_det_range', 'x_rake_speed',
-  'x_arm', 'f_autofeed', 'f_gen_output', 'd_scanner', 'x_arm_grab', 'x_arm_speed', 'l_speed', 'e_silo', 'e_compressor',
-  'x_arm_reach', 'd_speed', 'f_firebox', 'd_batch', 'e_comp_speed', 'e_wrapper', 'x_collector', 'd_mk2', 'p_det_depth',
-  'f_pole_conn', 'x_rake_push', 'x_hopper_out', 'p_vacuum', 'e_bale_value', 'f_fuel_eff', 'x_arm_mk2', 'l_capacity',
-  'f_industrial_gen', 'e_double_chamber', 'e_wrap_speed', 'e_wrapped_value', 'e_premium_wrap', 'x_col_suction',
-  'x_col_radius', 'd_mk2_speed', 'e_order_reward', 'e_hay_value', 'e_silo_out', 'f_pole_range', 'x_rake_width',
-  'x_rake_industrial', 'x_arm_rotation', 'x_arm_smart', 'p_det_precision', 'p_det_direction', 'd_buffer', 'd_eject',
-  'x_col_output', 'x_col_efficiency', 'x_col_turbine', 'p_move', 'p_barrow_cap', 'p_faster_push', 'p_fork_speed',
-  'p_wider_tines', 'p_vac_suction', 'p_vac_range', 'e_batch_eff', 'e_silo_cap', 'e_silo_in', 'l_merger', 'l_priority',
-  'l_overflow', 'f_power_loss', 'd_dual_lane', 'x_hopper_cap', 'x_hopper_dual', 'e_silo_dual',
+const PLAN: [string, number][] = [
+  ['p_hands', 2], ['p_carry', 1], ['p_shovel', 1], ['p_carry', 2], ['p_bucket', 1], ['p_detector', 1], ['p_pitchfork', 1],
+  ['p_shovel', 2], ['p_shovel', 3], ['p_wheelbarrow', 1],
+  ['x_hopper', 1], ['f_generator', 1], ['x_rake', 1], ['l_conveyor', 1], ['f_pole', 1], ['x_rake_auto', 1], ['e_hay_value', 2],
+  ['l_splitter', 1], ['p_detector', 2], ['x_rake', 2],
+  ['x_arm', 1], ['f_autofeed', 1], ['f_generator', 2], ['d_scanner', 1], ['x_arm', 2], ['l_conveyor', 2], ['e_hay_value', 3],
+  ['x_arm', 3], ['e_silo', 1], ['e_compressor', 1], ['l_conveyor', 3], ['f_generator', 3], ['d_scanner', 2], ['x_rake', 3],
+  ['x_collector', 1], ['e_wrapper', 1], ['e_hay_value', 4], ['d_scanner', 3], ['f_pole', 2], ['f_pole', 3], ['x_arm', 4],
+  ['e_compressor', 2], ['d_scanner', 4], ['l_conveyor', 4], ['x_collector', 2], ['e_hay_value', 5], ['d_scanner', 5],
+  ['x_hopper', 2], ['x_hopper', 3], ['f_generator', 4], ['x_arm', 5], ['x_collector', 3], ['e_bale_value', 1],
+  ['e_compressor', 3], ['e_wrapper', 2], ['e_hay_value', 6], ['f_pole', 4], ['f_generator', 5], ['x_collector', 4],
+  ['x_rake', 4], ['e_silo', 2], ['e_wrapper', 3], ['e_compressor', 4], ['l_conveyor', 5], ['e_hay_value', 7],
+  ['x_collector', 5], ['e_wrapper', 4], ['e_order_reward', 1], ['e_hay_value', 8], ['x_rake', 5], ['e_compressor', 5],
+  ['e_wrapper', 5], ['e_hay_value', 9], ['e_hay_value', 10], ['d_dual_lane', 1], ['x_hopper', 4], ['x_hopper', 5],
+  ['e_silo', 3], ['e_silo', 4], ['e_silo', 5], ['f_pole', 5], ['p_detector', 3], ['p_detector', 4], ['p_detector', 5],
+  ['l_merger', 1], ['l_priority', 1], ['l_overflow', 1], ['p_move', 1], ['p_vacuum', 1],
 ];
 
 const TOOL_PRIORITY: (ToolId | 'wheelbarrow')[] = ['shovel', 'bucket', 'detector', 'pitchfork', 'wheelbarrow', 'vacuum'];
@@ -81,10 +88,9 @@ const GEN_SLOTS: { cell: Cell; rot: Rot }[] = [
   { cell: { x: -16, z: 1, level: 0 }, rot: 1 },   // input at (-15, 1) facing north
   { cell: { x: -16, z: -3, level: 0 }, rot: 3 },  // input at (-15, -1) facing south
 ];
+const MAX_GENERATORS = 4;
 const SCAN_X = -13;             // scanner MK1 cells x -13..-11 (MK2: -13..-10)
 const HOPPER_CELL: Cell = { x: -10, z: 1, level: 0 }; // rot 3: output at (-10, 1) facing north onto the trunk
-/** North feeder hopper (rot 1): output at (-9, -1) facing south onto the trunk; input at (-10, -2) from (-10, -3). */
-const HOPPER_N_CELL: Cell = { x: -10, z: -2, level: 0 };
 /** Feeder arcs around the pile foot: row z = +-ARC_Z flowing west, then along x = -10 into the hoppers. */
 const ARC_Z = 12;
 const ARC_X_EAST = 17;
@@ -93,16 +99,22 @@ const RAKE_X0 = -8;             // head rake (rot 0) cells x -8..-7, z -1..1
 
 type Stage = 'manual' | 'rake' | 'trunk';
 
+/** Arc lines run past the processing area straight into their own chute inputs. */
+const S_ARC_END_X = -29;        // south arc: row z = ARC_Z west to here, north along x = -29, west into (-30, 8)
+const N_ARC_END_X = -31;        // north arc: row z = -ARC_Z west to here, south along x = -31 into (-31, 5)
+/** Splitter on each arc row feeding an extra generator on the outer side (auto feed). */
+const ARC_GEN_X = -20;
+
 /** Cells reserved by the layout (poles must never land there). [x0, z0, x1, z1] inclusive. */
 const RESERVED: [number, number, number, number][] = [
   [-31, -5, 20, -4],              // bypass row z = -4 (and a margin)
   [-31, -5, -29, 9],              // chute columns
   [-30, -1, -9, 1],               // trunk + inline machines (z -1..1)
   [-17, -4, -14, 4],              // generators + splitters
-  [HOPPER_N_CELL.x, HOPPER_N_CELL.z, HOPPER_N_CELL.x + 1, HOPPER_N_CELL.z + 1],
   [HOPPER_CELL.x, HOPPER_CELL.z, HOPPER_CELL.x + 1, HOPPER_CELL.z + 1],
-  [-11, -ARC_Z, -10, ARC_Z],      // arc columns
-  [-11, ARC_Z, ARC_X_EAST, ARC_Z], [-11, -ARC_Z, ARC_X_EAST, -ARC_Z], // arc rows
+  [S_ARC_END_X, 8, S_ARC_END_X, ARC_Z], [N_ARC_END_X, -ARC_Z, N_ARC_END_X, 4], // arc columns into the chute
+  [N_ARC_END_X, ARC_Z - 1, ARC_X_EAST, ARC_Z], [N_ARC_END_X, -ARC_Z, ARC_X_EAST, -ARC_Z + 1], // arc rows (+ scanners)
+  [ARC_GEN_X - 1, ARC_Z + 1, ARC_GEN_X + 1, ARC_Z + 3], [ARC_GEN_X - 1, -ARC_Z - 3, ARC_GEN_X + 1, -ARC_Z - 1], // arc generators
 ];
 /** Seconds a human spends per placement (shop, aim, rotate, confirm) and per moved machine. */
 const BUILD_TIME_MACHINE = 5;
@@ -139,7 +151,7 @@ export class Bot {
   stage: Stage = 'manual';
 
   constructor(private readonly opts: BotOptions) {
-    this.sim = new Sim(opts.seed);
+    this.sim = new Sim(opts.seed, { pileUnits: opts.pileUnits });
     const ev = this.sim.events;
     ev.on('node:unlocked', (e) => this.mark('unlock', `${e.id} L${e.level}`));
     ev.on('tool:bought', (e) => this.mark('tool', String(e.tool)));
@@ -243,36 +255,92 @@ export class Bot {
   // Economy decisions
   // =====================================================================================
 
+  /** Money reserved for the research step the bot is waiting to afford (machines must leave it). */
+  private techReserve = 0;
+  private techReserveSince = -1;
+
+  private ownsUnitOf(id: string): boolean {
+    const sim = this.sim, pr = sim.progress;
+    const units: Record<string, BuildingType[]> = {
+      x_hopper: ['hopper'], x_rake: ['pistonRake'], x_arm: ['roboticArm'], x_collector: ['vacuumCollector'], l_conveyor: ['conveyor'],
+      d_scanner: ['scannerMk1', 'scannerMk2'], e_compressor: ['compressor'], e_silo: ['silo'], e_wrapper: ['wrapper'],
+      f_generator: ['hayGenerator'], f_pole: ['powerPole'],
+    };
+    const tools: Record<string, ToolId | 'wheelbarrow'> = {
+      p_shovel: 'shovel', p_bucket: 'bucket', p_pitchfork: 'pitchfork', p_detector: 'detector', p_vacuum: 'vacuum', p_wheelbarrow: 'wheelbarrow',
+    };
+    if (units[id]) return units[id].some((t) => sim.ownedCount(t) > 0);
+    const t = tools[id];
+    if (t) return t === 'wheelbarrow' ? pr.hasWheelbarrow : pr.ownedTools.has(t);
+    return true;
+  }
+
+  private stepDone(id: string, level: number): boolean {
+    const node = TECH_BY_ID[id];
+    return !node || displayLevel(node, this.sim.progress.nodeLevel(id)) >= Math.min(level, maxDisplayLevel(node));
+  }
+
   private spendWP(): void {
     const pr = this.sim.progress;
     this.savingWP = '';
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const id of TECH_PRIORITY) {
+    this.techReserve = 0;
+    let wpHeld = 0;
+    for (let guard = 0; guard < 20; guard++) {
+      let bought = false;
+      for (const [id, level] of PLAN) {
+        if (this.stepDone(id, level)) continue;
         const node = TECH_BY_ID[id];
-        if (!node) continue;
-        const level = pr.nodeLevel(id);
-        if (level >= node.levels.length) continue;
-        if (!node.requires.every((r) => pr.isUnlocked(r))) continue;
-        if (pr.canUnlock(id).ok) { pr.unlock(id); this.lastUnlockAt = this.sim.time; changed = true; break; }
-        // Reachable but not affordable: save WP for it - unless saving has dragged on; then, like a player,
-        // grab the cheapest upgrade that is affordable right now.
-        this.savingWP = `${id} (${node.levels[level].cost} WP)`;
-        if (node.levels[level].cost >= 4 && pr.wp < node.levels[level].cost - 1 && this.sim.time - this.lastUnlockAt > 150) {
+        const owned = pr.nodeLevel(id);
+        const next = node.levels[owned];
+        const reqs = owned === 0 ? [...node.requires, ...(next.req ?? [])] : next.req ?? [];
+        if (!reqs.every((r) => pr.isUnlocked(r))) continue;
+        // Upgrading a technology you own no unit of is wasted money: build one first.
+        if (owned >= 1 && next.money > 0 && !this.ownsUnitOf(id)) continue;
+        const chk = pr.canUnlock(id);
+        const wpFree = pr.wp - wpHeld;
+        if (chk.ok && wpFree >= next.cost && (this.techReserve === 0 || pr.money - this.techReserve >= next.money)) {
+          pr.unlock(id);
+          this.lastUnlockAt = this.sim.time;
+          this.techReserveSince = -1;
+          bought = true;
+          break;
+        }
+        if (wpFree >= next.cost) {
+          // WP ready, money short: reserve the money (machines wait) and keep its WP; look further down the plan.
+          if (this.techReserve === 0) {
+            this.techReserve = next.money;
+            if (this.techReserveSince < 0) this.techReserveSince = this.sim.time;
+            this.savingWP = `${id} Lv${displayLevel(node, owned + 1)} ($${next.money})`;
+          }
+          wpHeld += next.cost;
+          continue;
+        }
+        // Reachable but not affordable in WP: save for it - unless saving has dragged on; then, like a player,
+        // grab the cheapest step that is affordable right now.
+        if (!this.savingWP) this.savingWP = `${id} Lv${displayLevel(node, owned + 1)} (${next.cost} WP)`;
+        if (next.cost >= 4 && pr.wp < next.cost - 1 && this.sim.time - this.lastUnlockAt > 150) {
           let cheapest: string | null = null, cost = Infinity;
-          for (const other of TECH_PRIORITY) {
+          for (const [other] of PLAN) {
             const o = TECH_BY_ID[other];
             if (!o || !pr.canUnlock(other).ok) continue;
             const c = o.levels[pr.nodeLevel(other)].cost;
             if (c < cost) { cost = c; cheapest = other; }
           }
-          if (cheapest) { pr.unlock(cheapest); this.lastUnlockAt = this.sim.time; changed = true; break; }
+          if (cheapest) { pr.unlock(cheapest); this.lastUnlockAt = this.sim.time; bought = true; }
         }
-        return;
+        break;
       }
+      if (!bought) break;
+      this.techReserve = 0;
+      wpHeld = 0;
+      this.savingWP = '';
     }
+    // A reserve that cannot be met for 2 minutes stops blocking machine purchases (the player moves on).
+    if (this.techReserve > 0 && this.techReserveSince >= 0 && this.sim.time - this.techReserveSince > 120) this.techReserve = 0;
   }
+
+  /** Money a machine purchase may use without eating the research reserve. */
+  private spendable(): number { return this.sim.progress.money - this.techReserve; }
 
   private buyTools(): void {
     const pr = this.sim.progress;
@@ -479,7 +547,7 @@ export class Bot {
   private insertMachine(type: BuildingType, cell: Cell, rot: Rot, x0: number, x1: number): Building | null {
     const sim = this.sim;
     if (!sim.progress.buildingUnlocked(type)) return null;
-    if (sim.progress.money < sim.nextCost(type) + 200) { this.waitingMoney ||= `${type} ($${sim.nextCost(type)})`; return null; }
+    if (this.spendable() < sim.nextCost(type) + 200) { this.waitingMoney ||= `${type} ($${sim.nextCost(type)})`; return null; }
     const removed: number[] = [];
     for (let x = x0; x <= x1; x++) {
       const b = sim.buildingAtCell(x, TZ, 0);
@@ -547,7 +615,7 @@ export class Bot {
     const sim = this.sim;
     const pr = sim.progress;
     this.waitingMoney = '';
-    const money = () => pr.money;
+    const money = () => this.spendable();
 
     // 1) First generator + head rake (tray emptied by hand until the trunk exists).
     // A player builds and stokes the generator as soon as its plan is unlocked (the Stoke the Fire order asks for it).
@@ -632,24 +700,41 @@ export class Bot {
       }
     }
 
-    // 4) Power: second generator when short, generator upgrades are tech.
+    // 4) Power: more generators when short (2 on the trunk's fuel splitter, then 1 per feeder line).
     const short = sim.power.totalDemand > sim.power.totalSupply * 0.95;
-    if (short && sim.ownedCount('hayGenerator') < GEN_SLOTS.length && money() >= sim.nextCost('hayGenerator') * 1.2) {
-      const slot = GEN_SLOTS[sim.ownedCount('hayGenerator')];
+    const gens = sim.ownedCount('hayGenerator');
+    if (short && gens < GEN_SLOTS.length && money() >= sim.nextCost('hayGenerator') * 1.2) {
+      const slot = GEN_SLOTS[gens];
       const g = this.tryPlace('hayGenerator', slot.cell, slot.rot);
       if (g) { g.interact(sim); }
+    } else if (short && gens >= GEN_SLOTS.length && gens < MAX_GENERATORS && pr.isUnlocked('f_autofeed') && pr.buildingUnlocked('splitter')) {
+      const side: 1 | -1 = gens === GEN_SLOTS.length ? 1 : -1;
+      if ((side > 0 ? this.arcs.south : this.arcs.north)) this.addArcGenerator(side);
     }
 
-    // Feeder arcs around the pile foot for arms (and later collectors).
+    // Feeder lines around the pile foot for arms (and later collectors), each into its own chute input.
     // Built as soon as there is something to feed them: side rakes first (GDD: rake line), arms later.
     const extractorCost = pr.buildingUnlocked('roboticArm') ? sim.nextCost('roboticArm') : sim.nextCost('pistonRake');
     if (pr.buildingUnlocked('roboticArm') || pr.buildingUnlocked('pistonRake')) {
-      if (!this.arcs.south && money() >= sim.nextCost('conveyor') * 40 + extractorCost) this.buildArc(1);
-      else if (this.arcs.south && !this.arcs.north && money() >= sim.nextCost('hopper') + sim.nextCost('conveyor') * 40 + extractorCost) this.buildArc(-1);
+      if (!this.arcs.south && money() >= sim.nextCost('conveyor') * 55 + extractorCost) this.buildArc(1);
+      else if (this.arcs.south && !this.arcs.north && money() >= sim.nextCost('conveyor') * 60 + extractorCost) this.buildArc(-1);
+    }
+    // North line: its MK1 becomes an MK2 once the south line has one (the MK1 would cap the line).
+    const nMk1 = sim.buildingAtCell(-9, -ARC_Z, 0);
+    if (nMk1?.type === 'scannerMk1' && sim.buildingsOfType('scannerMk2').length >= 1 && pr.buildingUnlocked('scannerMk2')
+      && this.spendable() >= sim.nextCost('scannerMk2') + 3000) {
+      sim.remove(nMk1.id);
+      for (let x = -9; x <= -7; x++) if (!sim.buildingAtCell(x, -ARC_Z, 0)) this.tryPlace('conveyor', { x, z: -ARC_Z, level: 0 }, 2);
+      if (this.insertOnRow('scannerMk2', -ARC_Z, -9, 4, -ARC_Z - 1)) this.mark('line', 'scanner MK2 on the north line');
+    }
+    // A scanner on the north line too (the MK2 goes on the south line), or its needles are tossed back.
+    if (this.arcs.north && sim.buildingsOfType('scannerMk1').length === 1 && sim.buildingAtCell(-9, -ARC_Z, 0)?.type === 'conveyor'
+      && pr.buildingUnlocked('scannerMk1') && sim.ownedCount('roboticArm') >= 4) {
+      if (this.insertOnRow('scannerMk1', -ARC_Z, -9, 3, -ARC_Z - 1)) this.mark('line', 'scanner MK1 on the north line');
     }
 
     // 5) Extraction along the belts (only while power is not the bottleneck).
-    if (!short || sim.ownedCount('hayGenerator') < GEN_SLOTS.length) this.addExtractors();
+    if (!short || sim.ownedCount('hayGenerator') < MAX_GENERATORS) this.addExtractors();
 
     // Stockpile order: close the valve (switch the compressor off) until the silo holds enough, like a player would.
     const stock = pr.activeOrders().find((o) => o.id === 'o_stockpile');
@@ -668,38 +753,70 @@ export class Bot {
     for (const b of [...sim.buildings.values()]) if (b.needsPower && b.status === 'noPower') this.ensurePower(b);
   }
 
-  /** Belt arc along the pile's south (side 1) or north (side -1) foot, ending in a hopper beside the trunk. */
+  /**
+   * Belt arc along the pile's south (side 1) or north (side -1) foot, running past the processing area straight
+   * into its own Market Chute input: every arc is an independent line (the trunk alone caps the factory).
+   */
   private buildArc(side: 1 | -1): void {
     const sim = this.sim;
-    if (side > 0 && !sim.buildingsOfType('hopper').some((h) => h.cell.z === HOPPER_CELL.z)) {
-      if (!this.tryPlace('hopper', HOPPER_CELL, 3)) return;
-    }
-    if (side < 0 && !sim.buildingsOfType('hopper').some((h) => h.cell.z === HOPPER_N_CELL.z)) {
-      // The arc must end in its hopper. A fallback head rake may sit on that spot: push it forward first.
-      const rake = sim.buildingsOfType('pistonRake').find((r) => r.rot === 0 && r.cell.z === TZ - 1 && r.cell.x < RAKE_X0);
-      if (rake && sim.canMove(rake.id, { x: RAKE_X0, z: TZ - 1, level: 0 }, 0).ok) {
-        const oldX = rake.cell.x;
-        sim.move(rake.id, { x: RAKE_X0, z: TZ - 1, level: 0 }, 0);
-        this.advance(MOVE_TIME);
-        for (let x = oldX; x < RAKE_X0; x++) if (!sim.buildingAtCell(x, TZ, 0)) this.tryPlace('conveyor', { x, z: TZ, level: 0 }, 2);
-        sim.rebuildTopology();
-      }
-      if (!this.tryPlace('hopper', HOPPER_N_CELL, 1)) return;
-    }
     const z = side * ARC_Z;
+    const endX = side > 0 ? S_ARC_END_X : N_ARC_END_X;
     const tiles: { x: number; z: number; rot: Rot }[] = [];
-    for (let x = ARC_X_EAST; x > -10; x--) tiles.push({ x, z, rot: 2 });
-    const colRot: Rot = side > 0 ? 3 : 1;
-    tiles.push({ x: -10, z, rot: colRot });
-    const zEnd = side > 0 ? 3 : -3;
-    for (let zz = z - side; side > 0 ? zz >= zEnd : zz <= zEnd; zz -= side) tiles.push({ x: -10, z: zz, rot: colRot });
+    for (let x = ARC_X_EAST; x > endX; x--) tiles.push({ x, z, rot: 2 });
+    if (side > 0) {
+      for (let zz = z; zz >= 9; zz--) tiles.push({ x: endX, z: zz, rot: 3 });
+      tiles.push({ x: endX, z: 8, rot: 2 });
+    } else {
+      for (let zz = z; zz <= 4; zz++) tiles.push({ x: endX, z: zz, rot: 1 });
+    }
     let placed = 0;
     for (const t of tiles) {
       if (sim.buildingAtCell(t.x, t.z, 0)) continue;
       if (this.tryPlace('conveyor', { x: t.x, z: t.z, level: 0 }, t.rot)) placed++;
     }
     if (side > 0) this.arcs.south = true; else this.arcs.north = true;
-    this.mark('line', `${side > 0 ? 'south' : 'north'} feeder arc (${placed} tiles)`);
+    this.mark('line', `${side > 0 ? 'south' : 'north'} feeder line to the chute (${placed} tiles)`);
+  }
+
+  /** Replace belts of an arc row (x0..x0+w-1 at row z) with an inline machine flowing west. */
+  private insertOnRow(type: BuildingType, rowZ: number, x0: number, w: number, cellZ: number): Building | null {
+    const sim = this.sim;
+    if (!sim.progress.buildingUnlocked(type)) return null;
+    if (this.spendable() < sim.nextCost(type) + 500) { this.waitingMoney ||= `${type} ($${sim.nextCost(type)})`; return null; }
+    const removed: { x: number; z: number; type: BuildingType; rot: Rot }[] = [];
+    const [fw, fd] = BUILDABLES[type].footprint;
+    void fw;
+    for (let x = x0; x < x0 + w; x++) for (let zz = cellZ; zz < cellZ + fd; zz++) {
+      const b = sim.buildingAtCell(x, zz, 0);
+      if (!b) continue;
+      if (b.type !== 'conveyor' && b.type !== 'roboticArm' && b.type !== 'powerPole') { for (const r of removed) this.tryPlace(r.type, { x: r.x, z: r.z, level: 0 }, r.rot); return null; }
+      removed.push({ x: b.cell.x, z: b.cell.z, type: b.type, rot: b.rot });
+      sim.remove(b.id);
+    }
+    const m = this.tryPlace(type, { x: x0, z: cellZ, level: 0 }, 2);
+    if (!m) { for (const r of removed) if (r.type === 'conveyor') this.tryPlace('conveyor', { x: r.x, z: r.z, level: 0 }, r.rot); return null; }
+    void rowZ;
+    this.ensurePower(m);
+    return m;
+  }
+
+  /** Extra generator on an arc: splitter on the row, generator on the outer side taking fuel from it. */
+  private addArcGenerator(side: 1 | -1): boolean {
+    const sim = this.sim;
+    const z = side * ARC_Z;
+    const at = sim.buildingAtCell(ARC_GEN_X, z, 0);
+    if (at?.type === 'conveyor') {
+      if (this.spendable() < sim.nextCost('splitter') + sim.nextCost('hayGenerator') * 1.1) return false;
+      sim.remove(at.id);
+      if (!this.tryPlace('splitter', { x: ARC_GEN_X, z, level: 0 }, 2)) { this.tryPlace('conveyor', { x: ARC_GEN_X, z, level: 0 }, 2); return false; }
+    } else if (at?.type !== 'splitter') return false;
+    const g = side > 0
+      ? this.tryPlace('hayGenerator', { x: ARC_GEN_X - 1, z: z + 1, level: 0 }, 1)
+      : this.tryPlace('hayGenerator', { x: ARC_GEN_X - 1, z: z - 3, level: 0 }, 3);
+    if (!g) return false;
+    g.interact(sim);
+    this.mark('line', `generator fed from the ${side > 0 ? 'south' : 'north'} line`);
+    return true;
   }
 
   private placeHeadRake(x: number): Building | null {
@@ -792,6 +909,13 @@ export class Bot {
    * Candidate slots for an extractor next to any feeder belt: the machine's output faces the belt's side and
    * its front faces away from the belt (into the pile).
    */
+  /** Cells kept free for the line scanners (MK2 on the south line, MK1 then MK2 on the north line). */
+  private inScannerZone(type: BuildingType, cell: Cell, rot: Rot): boolean {
+    const [w, d] = rotatedSize(BUILDABLES[type], rot);
+    const zones: [number, number, number, number][] = [[-9, ARC_Z - 1, -6, ARC_Z], [-9, -ARC_Z - 1, -6, -ARC_Z]];
+    return zones.some(([x0, z0, x1, z1]) => cell.x <= x1 && cell.x + w - 1 >= x0 && cell.z <= z1 && cell.z + d - 1 >= z0);
+  }
+
   private sideSlots(type: BuildingType): { cell: Cell; rot: Rot }[] {
     const out: { cell: Cell; rot: Rot }[] = [];
     const def = BUILDABLES[type];
@@ -821,6 +945,7 @@ export class Bot {
     let best: { cell: Cell; rot: Rot; hay: number } | null = null;
     const reach = this.reachOf(type);
     for (const s of this.sideSlots(type)) {
+      if (this.inScannerZone(type, s.cell, s.rot)) continue;
       const chk = ignoreId ? sim.canMove(ignoreId, s.cell, s.rot) : sim.canPlace(type, s.cell, s.rot);
       if (!chk.ok && !(chk.reason ?? '').startsWith('Need $')) continue;
       const c = buildingCenter(type, s.cell, s.rot);
@@ -850,11 +975,11 @@ export class Bot {
     const order: BuildingType[] = ['vacuumCollector', 'roboticArm', 'pistonRake'];
     for (const type of order) {
       if (!pr.buildingUnlocked(type)) continue;
-      const cap = type === 'roboticArm' ? 20 : type === 'vacuumCollector' ? 4 : 4;
+      const cap = type === 'roboticArm' ? 36 : type === 'vacuumCollector' ? 6 : 6;
       if (sim.ownedCount(type) >= cap) continue;
       if (saving && type !== flagship) { this.waitingMoney ||= `${flagship} ($${sim.nextCost(flagship!)})`; continue; }
       const cost = sim.nextCost(type);
-      if (pr.money < cost * 1.15 + 300) { this.waitingMoney ||= `${type} ($${cost})`; continue; }
+      if (this.spendable() < cost * 1.15 + 300) { this.waitingMoney ||= `${type} ($${cost})`; continue; }
       const slot = this.bestSlot(type);
       const minHay = type === 'vacuumCollector' ? 1500 : 800;
       if (!slot || slot.hay < minHay) continue;

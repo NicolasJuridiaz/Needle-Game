@@ -129,6 +129,7 @@ export const BASE_STATS = {
   'econ.baleValue': 60,          // $ per bale
   'econ.wrappedValue': 110,      // $ per wrapped bale
   'econ.saleMul': 1,             // global sale multiplier (needle buff)
+  'econ.hayMul': 1,              // Hay Sell Value Lv.1-10: multiplies every hay product (raw, bale, wrapped)
   'econ.orderRewardMul': 1,
 
   // ----- Global -------------------------------------------------------------------

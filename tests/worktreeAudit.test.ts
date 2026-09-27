@@ -22,7 +22,8 @@ import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../src/config/balance';
 import { BUILDABLES } from '../src/config/buildables';
 import { BASE_STATS } from '../src/config/stats';
-import { TECH_NODES, type TechNode } from '../src/config/techTree';
+import { parseRequirement, TECH_NODES, type TechNode } from '../src/config/techTree';
+import { grantTech } from './support/simKit';
 import { TOOLS, WHEELBARROW } from '../src/config/tools';
 import { WORLD } from '../src/config/world';
 import { EventBus } from '../src/core/events';
@@ -56,18 +57,22 @@ function fresh(): Progression {
   return p;
 }
 
-/** Unlocks the prerequisites of `id` (recursively, level 1 each — the minimum the tree asks for). */
-function unlockRequires(p: Progression, id: string, seen = new Set<string>()): boolean {
+/** Unlocks the prerequisites of `id` (recursively, the minimum level each requirement asks for). */
+function unlockRequires(p: Progression, id: string): boolean {
   const node = BY_ID.get(id);
-  if (!node || seen.has(id)) return false;
-  seen.add(id);
+  if (!node) return false;
   for (const r of node.requires) {
-    if (!BY_ID.has(r)) return false;
-    if (p.isUnlocked(r)) continue;
-    if (!unlockRequires(p, r, seen)) return false;
-    if (!p.unlock(r)) return false;
+    if (!BY_ID.has(parseRequirement(r)[0])) return false;
+    if (!p.isUnlocked(r)) grantTech(p, r);
   }
   return true;
+}
+
+/** Satisfies the per-level requirements of the next level of `id`. */
+function unlockLevelRequires(p: Progression, id: string): void {
+  const node = BY_ID.get(id)!;
+  const next = node.levels[p.nodeLevel(id)];
+  for (const r of next?.req ?? []) if (!p.isUnlocked(r)) grantTech(p, r);
 }
 
 /** Maxes every node except `except` (and whatever depends on it). */
@@ -139,6 +144,7 @@ const RULES: { re: RegExp; make: (m: string[]) => Claim }[] = [
   // "+15 hay", "+200 hay", "2 m more reach"
   { re: new RegExp(`\\+${N}\\s*(?:hay|carry)\\b(?!\\/)`, 'g'), make: (m) => ({ text: m[0], kind: 'delta', a: +m[1], b: 0, pct: false }) },
   { re: new RegExp(`${N}\\s*m more\\b`, 'g'), make: (m) => ({ text: m[0], kind: 'delta', a: +m[1], b: 0, pct: false }) },
+  { re: new RegExp(`\\+${N}\\s*m\\b`, 'g'), make: (m) => ({ text: m[0], kind: 'delta', a: +m[1], b: 0, pct: false }) },
   // "+50%", "25% faster", "33% tighter", "30% less", "3x", "twice", "double"
   { re: new RegExp(`\\+${N}%`, 'g'), make: (m) => ({ text: m[0], kind: 'ratio', a: 1 + +m[1] / 100, b: 0, pct: false }) },
   { re: new RegExp(`${N}%\\s*(?:faster|more|tighter|denser|bigger|larger|higher)`, 'g'),
@@ -243,8 +249,13 @@ function audit(): Audit {
   }
   const badReq = new Set<string>();
   for (const n of TECH_NODES) {
-    for (const r of n.requires) if (!BY_ID.has(r)) { badReq.add(n.id); dead.push(`${n.id}: requires unknown node "${r}"`); }
-    if (n.requires.includes(n.id)) { badReq.add(n.id); dead.push(`${n.id}: requires itself`); }
+    for (const r of [...n.requires, ...n.levels.flatMap((l) => l.req ?? [])]) {
+      const [rid, lv] = parseRequirement(r);
+      const rn = BY_ID.get(rid);
+      if (!rn) { badReq.add(n.id); dead.push(`${n.id}: requires unknown node "${r}"`); continue; }
+      if (lv > rn.levels.length + (rn.levelBase ?? 0)) { badReq.add(n.id); dead.push(`${n.id}: requires ${r} but ${rid} stops at Lv.${rn.levels.length + (rn.levelBase ?? 0)}`); }
+    }
+    if (n.requires.some((r) => parseRequirement(r)[0] === n.id)) { badReq.add(n.id); dead.push(`${n.id}: requires itself`); }
   }
   // Cycles (DFS colouring).
   const colour = new Map<string, 0 | 1 | 2>();
@@ -253,7 +264,10 @@ function audit(): Audit {
   const dfs = (id: string): void => {
     colour.set(id, 1);
     stack.push(id);
-    for (const r of BY_ID.get(id)?.requires ?? []) {
+    // Node-level graph = what gates the FIRST purchase. Level requirements (generator Lv.5 needs poles Lv.3
+    // while poles need the generator plans) are no cycles; the real Progression below proves they resolve.
+    for (const r0 of BY_ID.get(id)?.requires ?? []) {
+      const r = parseRequirement(r0)[0];
       if (!BY_ID.has(r)) continue;
       const c = colour.get(r) ?? 0;
       if (c === 1) { for (const s of stack.slice(stack.indexOf(r))) inCycle.add(s); }
@@ -270,7 +284,8 @@ function audit(): Audit {
     changed = false;
     for (const n of TECH_NODES) {
       if (reachable.has(n.id) || badReq.has(n.id)) continue;
-      if (n.requires.every((r) => reachable.has(r))) { reachable.add(n.id); changed = true; }
+      const reqs = n.requires.map((r) => parseRequirement(r)[0]);
+      if (reqs.every((r) => reachable.has(r))) { reachable.add(n.id); changed = true; }
     }
   }
   // The real Progression can max every node with enough WP.
@@ -289,7 +304,7 @@ function audit(): Audit {
   const splitterModes = (p: Progression) =>
     new Splitter({ id: 1, type: 'splitter', cell: { x: 0, z: 0, level: 0 }, rot: 0 }).availableModes({ progress: p } as unknown as SimContext).length;
   const gatedPortTypes = (id: string) => BUILDING_TYPES.filter((t) => BUILDABLES[t].ports.concat(
-    ...Object.values(BUILDABLES[t].variants ?? {}).map((v) => v.ports)).some((p) => p.requiresNode === id));
+    ...Object.values(BUILDABLES[t].variants ?? {}).map((v) => v.ports)).some((p) => p.requiresNode !== undefined && parseRequirement(p.requiresNode)[0] === id));
   const portCount = (p: Progression, t: BuildingType) => resolvePorts(t, { x: 0, z: 0, level: 0 }, 0, undefined, (n) => p.isUnlocked(n)).length;
 
   let tested = 0;
@@ -309,6 +324,7 @@ function audit(): Audit {
       const bModes = splitterModes(p);
       const gTypes = gatedPortTypes(node.id);
       const bPorts = gTypes.map((t) => portCount(p, t));
+      unlockLevelRequires(p, node.id);
       const ok = p.unlock(node.id);
       if (!ok) { allOk = false; dead.push(`${tag}: cannot be unlocked with prerequisites met (${p.canUnlock(node.id).reason})`); break; }
       levelsTested++;
@@ -367,6 +383,7 @@ function audit(): Audit {
       if (ctxName === 'prerequisites only') unlockRequires(p, node.id); else maxAllExcept(p, node.id);
       for (let li = 0; li < node.levels.length; li++) {
         const effects = node.levels[li].effects;
+        if (ctxName === 'prerequisites only') unlockLevelRequires(p, node.id);
         const before = new Map(effects.map((e) => [e.stat, p.stat(e.stat)]));
         if (!p.unlock(node.id)) break;
         const expected = new Map(before);
@@ -489,11 +506,19 @@ describe('Work Tree audit', () => {
     expect(BUILDABLES.sellStation.requiresNode).toBeNull();
     for (const t of BUILDING_TYPES) {
       if (t === 'sellStation') continue;
+      const req = BUILDABLES[t].requiresNode!;
+      if (req.includes('@')) {
+        // Unlocked by a technology level (Scanner MK2 = Needle Scanner Lv.5): no separate plan node.
+        const [id] = parseRequirement(req);
+        expect(TECH_NODES.filter((n) => n.unlocks?.building?.includes(t)), `${t}: level-unlocked, no plan`).toHaveLength(0);
+        expect(a.reachable.has(id) && BY_ID.get(id)!.leveled, `${t} level tech ${id}`).toBe(true);
+        continue;
+      }
       const plans = TECH_NODES.filter((n) => n.unlocks?.building?.includes(t));
       expect(plans.map((n) => n.id), `${t} plans`).toHaveLength(1);
       expect(a.reachable.has(plans[0].id), `${t} plan reachable`).toBe(true);
       expect(plans[0].kind, `${plans[0].id} kind`).toBe('plan');
-      expect(BUILDABLES[t].requiresNode, `${t}.requiresNode`).toBe(plans[0].id);
+      expect(req, `${t}.requiresNode`).toBe(plans[0].id);
     }
     for (const t of TOOL_IDS) {
       const plans = TECH_NODES.filter((n) => n.unlocks?.tool === t);

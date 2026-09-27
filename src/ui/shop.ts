@@ -1,6 +1,6 @@
 import { BALANCE } from '../config/balance';
 import { BUILDABLES, type BuildableDef } from '../config/buildables';
-import { TECH_NODES } from '../config/techTree';
+import { requirementLabel } from '../config/techTree';
 import { TOOLS, WHEELBARROW } from '../config/tools';
 import type { BuildCategory, BuildingType, ToolId } from '../sim/types';
 import { ClassSlot, h, TextSlot } from './dom';
@@ -19,7 +19,6 @@ export const SHOP_TABS: { id: BuildCategory; label: string; icon: string }[] = [
   { id: 'factory', label: 'Factory', icon: 'platform' },
 ];
 
-const NODE_NAME = new Map(TECH_NODES.map((n) => [n.id, n.name]));
 
 /**
  * Live throughput label for a buildable, computed from current stats (upgrades included).
@@ -193,7 +192,7 @@ export class Shop extends Panel {
         const unlocked = def.requiresNode === null || p.isUnlocked(def.requiresNode);
         const afford = p.money >= def.cost;
         state = isOwned ? 'owned' : !unlocked ? 'locked' : afford ? 'buy' : 'poor';
-        lockName = def.requiresNode ? NODE_NAME.get(def.requiresNode) ?? def.requiresNode : '';
+        lockName = def.requiresNode ? requirementLabel(def.requiresNode) : '';
         c.price.set(isOwned ? 'Owned' : fmtPrice(def.cost));
         c.priceBad.set(!isOwned && !afford);
         if (state === 'buy') dots.set('tools', true);
@@ -208,7 +207,7 @@ export class Shop extends Panel {
         const cost = sim.nextCost(d.id);
         const afford = p.money >= cost;
         state = !unlocked ? 'locked' : afford ? 'buy' : 'poor';
-        lockName = d.requiresNode ? NODE_NAME.get(d.requiresNode) ?? d.requiresNode : '';
+        lockName = d.requiresNode ? requirementLabel(d.requiresNode) : '';
         c.price.set(cost > 0 ? fmtPrice(cost) : 'Free');
         c.priceBad.set(!afford);
         c.owned.set(count > 0 ? `x${fmtInt(count)}` : unlocked ? 'New' : '');

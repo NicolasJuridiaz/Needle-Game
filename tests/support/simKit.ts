@@ -5,7 +5,8 @@
  */
 import { expect } from 'vitest';
 import { BALANCE } from '../../src/config/balance';
-import { TECH_NODES } from '../../src/config/techTree';
+import { displayLevel, ownedLevelFor, parseRequirement, TECH_BY_ID } from '../../src/config/techTree';
+import type { Progression } from '../../src/sim/progression';
 import type { Building } from '../../src/sim/building';
 import { neighbor, resolvePorts } from '../../src/sim/grid';
 import { LogisticsBuilding } from '../../src/sim/logistics/base';
@@ -22,36 +23,38 @@ export function run(sim: Sim, seconds: number, each?: (sim: Sim) => void): void 
   for (let i = 0; i < n; i++) { sim.tick(DT); each?.(sim); }
 }
 
-/** Unlock every level of the given nodes (and their prerequisites) with granted WP. */
+/**
+ * Grants a technology level with test WP + Money, satisfying its requirements first (recursively).
+ * `spec`: "id@N" = displayed Lv.N; a bare id = Lv.1 (the plans) for Level-system technologies, every level
+ * for the other nodes (features, Carry Capacity ...).
+ */
+export function grantTech(p: Progression, spec: string): void {
+  const [id, lv] = parseRequirement(spec);
+  const node = TECH_BY_ID[id];
+  expect(node, `tech node ${id}`).toBeDefined();
+  const target = spec.includes('@') ? ownedLevelFor(node, lv) : node.leveled ? 1 : node.levels.length;
+  expect(target, `${spec} exists`).toBeLessThanOrEqual(node.levels.length);
+  while (p.nodeLevel(id) < target) {
+    const owned = p.nodeLevel(id);
+    const next = node.levels[owned];
+    for (const r of owned === 0 ? [...node.requires, ...(next.req ?? [])] : next.req ?? []) if (!p.isUnlocked(r)) grantTech(p, r);
+    p.addWP(next.cost, 'milestone');
+    if (next.money > 0) p.addMoney(next.money, 'milestone');
+    const chk = p.canUnlock(id);
+    expect(chk.ok, `unlock ${id} Lv.${displayLevel(node, owned + 1)}: ${chk.reason}`).toBe(true);
+    p.unlock(id);
+  }
+}
+
+/** Unlock the given technologies (see grantTech for the spec) with granted WP / Money. */
 export function unlock(sim: Sim, ids: string[]): void {
-  sim.progress.addWP(100_000, 'milestone');
-  const byId = new Map(TECH_NODES.map((n) => [n.id, n]));
-  const want = new Set<string>();
-  const add = (id: string): void => {
-    if (want.has(id)) return;
-    const node = byId.get(id);
-    expect(node, `tech node ${id}`).toBeDefined();
-    want.add(id);
-    for (const r of node!.requires) add(r);
-  };
-  ids.forEach(add);
-  for (let pass = 0; pass < 20; pass++) for (const id of want) while (sim.progress.canUnlock(id).ok) sim.progress.unlock(id);
-  for (const id of ids) expect(sim.progress.isUnlocked(id), `unlock ${id}`).toBe(true);
+  for (const id of ids) grantTech(sim.progress, id);
   sim.rebuildTopology();
 }
 
 /** Unlock the FIRST level of the given nodes (and prerequisites) - keeps upgrade stats at base. */
 export function unlockFirst(sim: Sim, ids: string[]): void {
-  sim.progress.addWP(100_000, 'milestone');
-  const byId = new Map(TECH_NODES.map((n) => [n.id, n]));
-  const done = new Set<string>();
-  const go = (id: string): void => {
-    if (done.has(id)) return;
-    done.add(id);
-    for (const r of byId.get(id)!.requires) go(r);
-    if (!sim.progress.isUnlocked(id)) expect(sim.progress.unlock(id), `unlock ${id}`).toBe(true);
-  };
-  ids.forEach(go);
+  for (const id of ids) grantTech(sim.progress, id.includes('@') ? id : `${id}@${TECH_BY_ID[id]?.levelBase ? 2 : 1}`);
   sim.rebuildTopology();
 }
 
