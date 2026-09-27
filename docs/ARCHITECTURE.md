@@ -536,6 +536,10 @@ progression, soft percussion), 4–8 bars variations, low volume, toggleable. Re
   - Game side: `src/game/telemetry.ts` (`GameTelemetry`: sim/game events -> catalog, run-level dedupe persisted in
     the save envelope, progress marks, playtime checkpoints, performance snapshots, error dedupe),
     `src/game/profile.ts` (`pn_profile`: session/run counters), `src/game/welcomeBack.ts` (read-only card data).
+  - `src/game/analyticsConsent.ts` (P0.1): opt-in consent (`unknown` / `granted` / `denied`, key
+    `pn_analytics_consent_v1`), the only switch that enables AnalyticsService; analytics-only storage (`pn_profile`,
+    `meta.telemetry`) is persisted only while granted. Remote analytics additionally needs keys + an https
+    `VITE_PRIVACY_POLICY_URL` (dev server on localhost excepted) and no `?analytics=0`.
   - Gameplay, machines, UI and sim never import analytics providers.
 
 ## 10. Game layer (`src/game/*`, phase 2)

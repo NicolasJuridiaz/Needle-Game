@@ -122,7 +122,7 @@ following https://docs.crazygames.com/requirements/ :
 | 3 | `gameplayStart` fires on the first click-to-play; `gameplayStop` on pause (Esc), Work Tree/Shop/Orders open, completion summary; `gameplayStart` again on resume. Not on tab/focus change | ☐ |
 | 4 | Initial download (until first `gameplayStart`) reported ≤ 20 MB (expected ~1.3 MB) | ☐ |
 | 5 | `muteAudio` from the portal mutes everything and in-game volume cannot un-mute it | ☐ |
-| 6 | Data module: progress survives reload on crazygames.com (not only localStorage) | ☐ |
+| 6 | Data module (submission: "Yes, using the Data Module"): progress survives reload on crazygames.com; console has no `[storage] CrazyGames data module failed` line | ☐ |
 | 7 | `happytime` on needles and on completion only (sparingly) | ☐ |
 | 8 | `reportGameCompletedPercentage`: 0 on new game, n×100/6 after each needle and on load, 100 on completion | ☐ |
 | 9 | Game works inside the portal iframe at 821×462 (minimum) and fullscreen; UI readable | ☐ |
@@ -130,5 +130,5 @@ following https://docs.crazygames.com/requirements/ :
 | 11 | Ads: **not implemented** (Basic Launch has no monetization). If ads are added later, mute audio + `gameplayStop` during ads and re-test | ☐ |
 | 12 | No console errors other than documented third-party ones | ☐ |
 | 13 | Submission form: title, description, controls, 6 screenshots/trailer, tags | ☐ |
-| 14 | Analytics (if ByteBrew keys are in the build): title screen shows the privacy notice with a working policy link; `?debug=1` → `__pnAnalyticsQA.status()` is `ready` inside the Preview iframe; ByteBrew dashboard receives `game_session_start` (docs/ANALYTICS_SETUP.md §11) | ☐ |
+| 14 | Analytics (only if a ByteBrew build is uploaded): fresh profile → consent card, **no** `bytebrew.io` request and no `bb_*` cookie before clicking; *Allow analytics* → `status()` `ready` inside the Preview iframe and events in the PROD dashboard; *Continue without analytics* → nothing sent; policy link opens (docs/ANALYTICS_SETUP.md §5) | ☐ |
 | 15 | Welcome Back: a save left ≥ 20 min shows the card on reload; the click continues; money/needles unchanged | ☐ |

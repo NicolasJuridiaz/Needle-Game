@@ -19,6 +19,8 @@ Project Needle is a first-person 3D incremental factory game for the web, built 
 6. Do not add generated output, dependencies, credentials, or local environment files to Git.
    Authorized runtime dependencies: `three`, and `bytebrew-web-sdk` (analytics only, imported solely in
    `src/platform/bytebrewAdapter.ts`). Analytics keys live in git-ignored `.env*` files (see `.env.example`).
+7. Remote analytics is opt-in: never load, initialise or send to ByteBrew before the player's explicit consent
+   (`src/game/analyticsConsent.ts`); `?analytics=0` always wins. See docs/ANALYTICS_PRIVACY_NOTES.md.
 
 ## Useful commands
 

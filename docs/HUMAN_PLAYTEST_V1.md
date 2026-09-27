@@ -10,8 +10,10 @@ timing sheet; this document is the observation protocol for the Basic Launch bui
   loud if you can. I will not help unless you are completely stuck." Help only after the tester has been stuck
   for 3+ minutes and asks; write down when and what you said.
 - Do not point at the screen, do not react to mistakes, do not answer "what do I do now?" (say "what do you think?").
-- Fresh build and fresh profile: incognito window, or clear Local Storage (`pn_save_v1`, `pn_profile`,
-  `pn_settings`) and cookies `bb_*`.
+- Fresh build and fresh profile: incognito window, or clear Local Storage (`pn_save_v1`, `pn_settings`,
+  `pn_analytics_consent_v1`, `pn_profile`) and cookies `bb_*`.
+- If the build has analytics, the tester sees the consent card first. Do not tell them what to choose; write down what
+  they chose, how long they looked at it and whether it confused them (it is part of the first impression).
 - Record the screen if the tester agrees (OBS or the browser recorder). Note times as mm:ss from the first click.
 - Turn on Settings → Show FPS counter only after the session, or ask a second observer to read it: the counter is
   itself a hint that something is being measured.

@@ -1,126 +1,177 @@
-# Analytics — privacy notes (P0 Basic Launch)
+# Analytics — privacy notes (P0.1, opt-in)
 
-Status: written by the developer team for internal use. **This is not a privacy policy.** The legal text
-(privacy policy / terms) must be written and hosted by the game owner; see "Pending before production".
+**This is technical documentation, not a privacy policy and not legal advice. It makes no claim of GDPR, COPPA or
+any other compliance.** Everything marked **REQUIRES OWNER/LEGAL REVIEW BEFORE PROD** is a decision for the game
+owner, ideally with legal advice.
 
-## 1. Provider
+Labels: **[OFICIAL]** = read in official documentation (links in §9, checked 2026-09-27) · **[CÓDIGO]** = observed
+in this repository or in the installed `bytebrew-web-sdk` 1.0.1 · **[QA]** = observed in Chromium with the network
+intercepted (no data reached ByteBrew) · **[INFERENCIA]** / **[RECOMENDACIÓN]**.
 
-| | |
-|---|---|
-| Provider | ByteBrew (https://bytebrew.io), CrazyGames' listed analytics partner (https://docs.crazygames.com/resources/partners/) |
-| SDK | `bytebrew-web-sdk` 1.0.1 (npm, MIT, obfuscated bundle), lazy-loaded chunk `ByteBrewSDK-*.js` (25.7 KB, 9.3 KB gzip) |
-| Endpoints (observed) | `POST https://web-platform.bytebrew.io/api/game/logs/add` (events), `.../api/game/configurations/remote/` (remote configs, not used) |
-| When it loads | Only if the build has `VITE_BYTEBREW_WEB_APP_ID` and `VITE_BYTEBREW_WEB_SDK_KEY`, `VITE_ANALYTICS_ENABLED` is not `false`, the player has not turned statistics off, and the URL has no `?analytics=0` |
-| Code | `src/platform/bytebrewAdapter.ts` is the only file importing the SDK. The game talks to `AnalyticsService` (`src/platform/analyticsService.ts`); game events are produced by `GameTelemetry` (`src/game/telemetry.ts`) |
+## 1. Consent model (opt-in)
 
-## 2. What the ByteBrew SDK sends by itself (observed in QA, not controlled by us)
+| State | How it happens | ByteBrew | Our analytics storage |
+|---|---|---|---|
+| `unknown` | New player, no choice yet | SDK chunk **never requested**, never initialised; 0 requests; 0 `bb_*` cookies [QA] | Nothing: no consent key, no `pn_profile`, no run id in the save [CÓDIGO] |
+| `granted` | Player clicks **Allow analytics** (title-screen card) or switches the Settings toggle **on** | Loaded and initialised at that moment; then at every page load while granted | `pn_analytics_consent_v1 = "granted"`, `pn_profile`, `meta.telemetry` in the save |
+| `denied` | **Continue without analytics** (card), or Settings toggle **off** (withdrawal) | Never initialised again; if it was running on this page, `stopTracking()` is called | `pn_analytics_consent_v1 = "denied"`; `pn_profile` removed; `meta.telemetry` dropped from the save |
 
-Captured from the real SDK in Chromium with the network intercepted (no data reached ByteBrew):
+- The game is 100 % playable in every state. Clicking the game without answering keeps `unknown` (nothing is sent);
+  the card appears again on the title screen of the next visit. After "Continue without analytics" it is not
+  shown again.
+- **No replay of earlier events.** On consent we send one `analytics_consent_granted` event with a minimal snapshot
+  (source, stage, whether a run is active, building counts, plus the common context). Everything that happened
+  before (session start, `first_*`, purchases, needles ...) is never sent. Those milestones count as already done,
+  so they are not re-sent later either [CÓDIGO, `tests/consent.test.ts`].
+- Remote analytics is only *possible* when the build has both ByteBrew keys, `VITE_ANALYTICS_ENABLED` is not
+  `false`, and `VITE_PRIVACY_POLICY_URL` is an absolute https URL. Otherwise the card is not shown, the Settings row
+  says "Not available in this version", and consent cannot be granted [CÓDIGO + QA].
+- Kill switch: `?analytics=0` in the page URL disables remote analytics for that page load, whatever the stored
+  consent. It always wins [CÓDIGO + QA]. No query parameter, debug flag or configuration can grant consent.
+- Development exception (only one): the Vite dev server opened on `localhost` / `127.0.0.1` / `[::1]`
+  (`import.meta.env.DEV`) may run ByteBrew **without a privacy policy URL**, to test with the DEV ByteBrew game.
+  It still requires clicking "Allow analytics". Never true in a production build (`isLocalDevelopment`,
+  `src/platform/analyticsConfig.ts`).
 
-| Field | Example | Notes |
-|---|---|---|
-| `user_id` | random UUID | ByteBrew's own id, stored in the cookie `bb_u_id` |
-| `session_id`, `session_key` | UUID / server key | per page session |
-| `game_id`, `version_number`, `sdk_version` | our app id, `VITE_APP_VERSION`, `1.0.1` | |
-| `platform` | `Web` | |
-| `deviceScreenSize` | `1280x720` | screen size |
-| `geo` | `US` | country code. How the SDK derives it is **not verified** (obfuscated code) |
-| `externalData.userLocale` | `en-US` | browser language |
-| `tracking_enabled` | `true` | |
-| Cookies | `bb_u_id`, `bb_u_h_init`, `bb_tr_on` | set by the SDK on the game's origin |
+## 2. ByteBrew lifecycle [CÓDIGO + QA]
 
-Like any web request, ByteBrew's server also sees the player's IP address. We never send it ourselves.
+1. Page load, consent not granted: nothing ByteBrew-related happens.
+2. Consent granted (click, or already granted at boot): `AnalyticsService.setEnabled(true)` → dynamic `import()` of the
+   `ByteBrewSDK-*.js` chunk → `initializeByteBrew(appId, sdkKey, version)`. The SDK sends a `user` event
+   (`new_user` / `game_open`) and receives a session key in the `session_key` response header. Our events wait in a
+   queue until `isByteBrewInitialized()` is true, or are dropped after 10 s (the game never waits).
+3. Withdrawal on the same page: `stopTracking()`; nothing more is sent (verified: 0 requests after withdrawal).
+4. Re-consent on the same page: `restartTracking()`. Re-consent on a later page: the SDK remembers the withdrawal in
+   its own cookie `bb_tr_on=false` and refuses to initialise ("Tracking is disabled. Not initializing."). Only after
+   an explicit re-consent, the adapter calls `restartTracking()` before `initializeByteBrew()` (verified: init OK,
+   `bb_tr_on=true`, new events delivered).
+5. On page unload while granted the SDK sends `game_close`; when the tab closes that request is often cut, and the SDK
+   logs `TypeError: Failed to fetch` to the console.
 
-## 3. What we send (custom events)
+## 3. Storage and cookies
 
-Every remote event carries this context (`GameTelemetry.context()`):
-`game_version`, `platform` (`crazygames` / `crazygames_local` / `web`), `run_id` (random, per run), `run_index`,
-`elapsed_seconds` (in-game time of the run), `hay_remaining` (% of the haystack left), `money`, `work_points`,
-`needle_count`. The session event has only `game_version` and `platform`, because no run is attached yet.
+### What the game stores (in CrazyGames: the SDK Data module; elsewhere: localStorage; see docs/CRAZYGAMES.md §Data Module)
 
-Wire format (ByteBrew rules: no spaces, periods or colons): snake_case keys; all values are strings;
-numbers are rounded to integers; text is reduced to `[a-z0-9_]`, at most 48 characters; at most 24 params per event.
-
-| Event | Trigger | Params (besides the context) | Once / repeat | Why |
+| Key | Content | When created | How it changes / is removed | Purpose |
 |---|---|---|---|---|
-| `game_session_start` | Page load | `new_player`, `returning_player`, `has_active_run`, `save_version`, `session_index`, `time_since_last_session_seconds` | once per page load | New vs returning players; D1/D7 of our own that does not depend on ByteBrew's cookie |
-| `run_start` | New run (first play or New Run) | `starting_hay`, `is_new_game` | once per run | Funnel start; run count |
-| `first_input` | First click into the game | — | once per run | Conversion to gameplay |
-| `first_dig` | First hay dug by the player | — | once per run | Understood the core action |
-| `first_hay_processed` | First sale | — | once per run | Understood selling |
-| `first_tool_purchase` / `tool_purchase` | Tool bought in the Shop | `tool_id`, `money_cost` | first: once per run; purchase: each (≤ 7 per run) | First purchase; tool order |
-| `first_tool_upgrade` / `tool_upgrade` | Player tool technology level (Work Tree) | `tool_id`, `from_level`, `to_level`, `money_cost`, `wp_cost` | first: once; upgrade: each | First upgrade; level pacing |
-| `technology_upgrade` | Machine / logistics technology level | `technology_id`, `from_level`, `to_level`, `money_cost`, `wp_cost` | each | Level System pacing |
-| `hay_value_upgrade` | Hay Sell Value level | `from_level`, `to_level`, `money_cost`, `wp_cost` | each | Is it seen as a real choice |
-| `worktree_purchase` | Other Work Tree nodes (features) | `node_id`, `level`, `wp_cost`, `money_cost` | each | Feature adoption |
-| `first_worktree_purchase` | Any first Work Tree purchase | `node_id` | once per run | First upgrade |
-| `machine_built` | Machine placed; logistics only at 1/10/25/50/100/150/200/300 pieces | `machine_type`, `technology_level`, `total_of_type`, `total_buildings` (logistics: `machine_type=logistics`, `last_piece`) | each machine; logistics at those counts | Factory growth without per-belt spam |
-| `first_machine`, `first_conveyor`, `first_automation`, `first_rake`, `first_robotic_arm`, `first_scanner`, `first_vacuum_collector`, `first_scanner_mk2` | First of each | `machine_type` / `source` where useful | once per run | First-session funnel |
-| `scanner_unlock`, `vacuum_collector_unlock`, `scanner_mk2_unlock` | Technology bought (Scanner Lv.1, Collector Lv.1, Scanner Lv.5) | — | once per run | Late-game funnel |
-| `menu_first_open` | First open of Work Tree / Shop / Orders / Build / Pause | `menu` | once per menu per run | Do players find the menus |
-| `needle_found` | Needle found | `needle_index` (1-6, order found), `depth_band` (`band_1`..`band_6`, where the needle was hidden), `depth_band_min_percent`, `detection_method`, `current_scanner` (`none`/`mk1`/`mk2`), `has_detector` | each (6 per run) | Needle timing, especially the late needle #2 seen in bot runs |
-| `first_needle` | First needle | `detection_method` | once per run | Funnel |
-| `order_started` | Order appears on the board | `order_id` | each (24 per run) | Order pacing |
-| `order_completed` / `first_order_completed` | Order completed | `order_id`, `duration_seconds` (in-game; omitted when unknown), `reward_money`, `reward_wp` | each / once | Which orders stall |
-| `run_progress` | Haystack removed crosses 10/25/50/75/90/100 % | `percent`, `total_buildings`, `robotic_arms`, `conveyors`, `scanners`, `vacuum_collectors`, `wp_remaining`, `stage` | once per mark per run | Where players stop, independent of machines. **Note:** a completed run removes about 60-75 % of the pile, so 90/100 mostly happen after completion ("keep playing") |
-| `playtime_checkpoint` | In-game time reaches 60, 180, 300, 600, 900, 1800, 2700, 3600 s | `seconds`, `stage`, `session_play_seconds` | once per checkpoint per run (in-game time, so it survives reloads) | Drop-off by time. The 30-50 min stretch = checkpoints 1800/2700 + `run_progress` 10/25 |
-| `run_complete` | 6th needle | `total_buildings`, `robotic_arms`, `conveyors`, `scanners`, `vacuum_collectors`, `minutes` | once per run | Completion rate and time |
-| `welcome_back_shown` / `welcome_back_continue` | Welcome Back card shown / player clicks in | `seconds_away`, `run_progress`, `current_stage` / `seconds_away` | once per load | Returning players |
-| `performance_snapshot` | 5 and 15 min of gameplay in the session, late game (≥ 45 min in-game), run complete | `moment`, `quality_preset`, `avg_fps`, `p10_fps` (last 60 s), `draw_calls`, `triangles_k`, `total_buildings`, `device_class` (`desktop`/`tablet`/`mobile`/`unknown`, only what CrazyGames reports) | ≤ 4 per session | Real FPS by quality level |
-| `game_error` | Uncaught error, unhandled rejection, WebGL context lost, save failed, corrupt save | `error_code`, `system`, `recoverable`, `occurrence` | ≤ 3 per code, ≤ 10 per session | Session-breaking problems |
-| `qa_test_event` | Manual, `__pnAnalyticsQA.test()` (dev builds or `?debug=1`) | `source` | manual | Verifying the pipeline |
+| `pn_save_v1` | The run save. Analytics part: `meta.telemetry` = `{ runId (random), runIndex, fired[], orderStarts }` **only while consent is granted** | First save (autosave 30 s, pause, tab hidden) | New Run; withdrawal drops `meta.telemetry` at once | Gameplay (Welcome Back uses the save's own `savedAt`); analytics dedupe |
+| `pn_settings` | Volume, controls, quality ... (no analytics setting) | First settings change | Settings | Gameplay |
+| `pn_analytics_consent_v1` | Only the word `"granted"` or `"denied"` (no id, no timestamp) | First explicit choice | Card or Settings toggle; deleting it = `unknown` (card shown again) | Remember the choice |
+| `pn_profile` | `{ v, sessions, runsStarted, firstSeenAt, lastSeenAt }` counters | Only when consent is granted | Removed on withdrawal and at boot whenever consent is not granted | `session_index`, `returning_player`, `run_index` |
 
-Local only (in the in-memory buffer `window.__pnAnalytics`, never sent): `quit_state`, `session_duration`.
-They fire on tab close, where a request is not reliable.
+The in-memory local debug buffer (`window.__pnAnalytics`, last 500 events) exists on every page load and is lost when
+the page closes. It is never persisted and never sent.
 
-**Safety limits** (`AnalyticsService`): at most 200 queued events before ByteBrew is ready, and at most 1500 remote
-events per page session. Analytics never throws into the game, never blocks boot, and a ByteBrew failure turns the
-service local-only.
+### What the ByteBrew SDK creates (only after consent) [QA, bytebrew-web-sdk 1.0.1]
 
-## 4. What we deliberately do NOT send
-
-- No name, email, CrazyGames username, user id or avatar (the CrazyGames User module is not used).
-- No IP address or location of our own. ByteBrew's country field (section 2) is theirs.
-- No save data, no free text (the game has no text input), no error messages or stack traces (codes only).
-- No hardware fingerprint: no GPU string, CPU, RAM, user agent or resolution from our side. The only device field
-  is `device_class`, and only when CrazyGames reports it.
-- No per-frame or per-tick events, and no per-belt events.
-
-## 5. Configuration
-
-`.env.example` has all variables. Copy it to `.env.production.local`; files matching `.env*` are git-ignored.
-
-| Variable | Meaning |
-|---|---|
-| `VITE_BYTEBREW_WEB_APP_ID`, `VITE_BYTEBREW_WEB_SDK_KEY` | ByteBrew Web keys. Empty = remote analytics off (noop) |
-| `VITE_APP_VERSION` | `game_version`. Set a new value per upload. Fallback: the `package.json` version |
-| `VITE_ANALYTICS_ENABLED` | `false` = no remote analytics for this build |
-| `VITE_PRIVACY_POLICY_URL` | https link shown in the in-game notice |
-
-These values are compiled into the public JavaScript bundle. They are identifiers, not secrets; ByteBrew's own docs
-say client-side keys cannot be hidden.
-
-## 6. Turning tracking off
-
-| Who | How | Effect |
+| Cookie | Value | When |
 |---|---|---|
-| Player | Esc → Settings → Privacy → "Share anonymous gameplay statistics" off (saved) | Nothing more is sent; ByteBrew `stopTracking()` is called if it was running; the SDK is never loaded on the next visits |
-| Anyone, one page load | `?analytics=0` in the URL | SDK not loaded, notice hidden |
-| Build | `VITE_ANALYTICS_ENABLED=false` or no keys | No SDK in use (the chunk file exists but is never requested) |
+| `bb_u_id` | Random UUID (ByteBrew user id) | First initialisation |
+| `bb_u_h_init` | Same UUID ("user has initialised") | First initialisation |
+| `bb_tr_on` | `false` after `stopTracking()`, `true` after `restartTracking()` | Withdrawal / re-consent |
 
-In-game notice (CrazyGames "User Consent", https://docs.crazygames.com/requirements/technical/#user-consent): when
-ByteBrew is active, the title screen shows a small, non-blocking line with a link to `VITE_PRIVACY_POLICY_URL`.
+- **`stopTracking()` does NOT delete `bb_u_id` / `bb_u_h_init`** [QA]. After a withdrawal they stay in the browser
+  until the player clears cookies. On re-consent ByteBrew reuses the same `bb_u_id`. We do not delete ByteBrew's
+  cookies ourselves: that is not what `stopTracking()` does, and deleting them would not remove data already held by
+  ByteBrew. **REQUIRES OWNER/LEGAL REVIEW BEFORE PROD**: whether the policy must tell players how to clear them.
+- Cookies are set on the game's origin. Inside the CrazyGames iframe, browsers that block or partition third-party
+  cookies (Safari, Firefox strict mode) may reset `bb_u_id` → more "new users" in ByteBrew than real ones (BUGS B035).
+  `session_index` / `returning_player` from `pn_profile` are the more reliable signal, but they too exist only since
+  consent.
 
-## 7. Pending before production (manual, owner)
+### What the SDK sends by itself (observed request body) [QA]
 
-1. **Write and host a privacy policy** covering ByteBrew (section 2 data, cookies, purpose, retention, contact,
-   opt-out) and set `VITE_PRIVACY_POLICY_URL`. Without it, do not upload a build with ByteBrew keys.
-2. Decide with a legal advisor whether opt-out (current default: statistics on, notice shown) is enough for your
-   audience (EU/UK players, CrazyGames audience 13+), or whether ByteBrew must only start after explicit consent.
-   The code supports both: to require opt-in, set `shareAnalytics` default to `false` in `src/game/settings.ts`
-   and add a consent control. That is a product and legal decision; it has not been made here.
-3. Check ByteBrew's data processing terms and retention settings in its dashboard.
-4. **Known limitation:** ByteBrew identifies users with a cookie on the game's origin. Inside the CrazyGames iframe,
-   browsers that block or partition third-party cookies (Safari, Firefox strict mode) may reset that id, which
-   inflates "new users" in ByteBrew. Use our own `returning_player` / `session_index` (stored with the save through
-   the CrazyGames Data module / localStorage) as the reference for returning players.
+`game_id`, `user_id` (= `bb_u_id`), `session_id`, `session_key`, `platform: "Web"`, `version_number`, `sdk_version`,
+`deviceScreenSize` (e.g. `1280x720`), `tracking_enabled`, `geo` (country code; how it is derived is **not verified**,
+obfuscated code), `externalData.userLocale` (e.g. `en-US`), event type (`new_user`, `game_open`, `game_close`).
+ByteBrew's server also receives the IP address with every request (normal HTTP). ByteBrew's privacy policy lists, as
+"End User Data", IP addresses, device information, device identifiers, time stamps, screen resolution, language,
+coarse location and country code [OFICIAL].
+
+## 4. What we send (custom events)
+
+Unchanged from P0 except the new `analytics_consent_granted`. Full table in `docs/ANALYTICS_SETUP.md` §6; catalog in
+`src/platform/analyticsEvents.ts`. Common context on every event: `game_version`, `platform`, `run_id`, `run_index`,
+`elapsed_seconds`, `hay_remaining`, `money`, `work_points`, `needle_count`. Wire format: snake_case keys, string
+values, integers only, ≤ 48 characters, ≤ 24 params; ≤ 1500 events per page.
+
+We deliberately do **not** send: names, emails, CrazyGames username / user id / avatar, IP or location of our own,
+save data, free text, error messages or stack traces (codes only), GPU / CPU / user agent / resolution of our own.
+
+## 5. Minors — BLOCKER — OWNER DECISION REQUIRED
+
+Verified facts:
+
+- [OFICIAL] CrazyGames: "CrazyGames is a website for an audience aged 13 or more. Your game must be PEGI 12
+  compliant"; kids games go to a separate site (Gameplay requirements).
+- [OFICIAL] ByteBrew privacy policy: "we do not knowingly collect or solicit Personal Data about children under 16
+  years of age. If we learn we have collected Personal Data from a child under 16 years of age, we will delete that
+  information as quickly as possible."
+- [OFICIAL] ByteBrew Terms of Service (effective 5 January 2026), §4.3: the customer (developer) represents that it has
+  a lawful basis, has given appropriate notice to its end users, and "if required by applicable law, it has obtained
+  appropriate consents". The terms also require compliance with laws "related to ... consumer and child protection".
+  No explicit age limit for end users was found in the Terms themselves (NOT VERIFIED beyond the text read).
+- [OFICIAL] CrazyGames lists ByteBrew as an official analytics partner for its developers (Partners page).
+
+Consequence [INFERENCIA]: CrazyGames' audience includes players aged 13-15. ByteBrew says it does not knowingly
+collect personal data of under-16s. Consent given by a 13-15 year old may not be valid consent everywhere (the age of
+digital consent differs by country). That is a real incompatibility risk, and the code cannot resolve it.
+
+What the code does and does not do: ByteBrew is opt-in, can be turned off for a whole build
+(`VITE_ANALYTICS_ENABLED=false` or no keys), and players can withdraw at any time. There is **no age gate** and none
+was added (no verified requirement asks for one).
+
+Owner decisions needed before shipping ByteBrew in PROD:
+1. Ask ByteBrew (privacy@bytebrew.io) and/or CrazyGames developer support, in writing, whether ByteBrew custom
+   analytics on a 13+ CrazyGames audience is acceptable to them.
+2. Get legal advice on whether an opt-in without age verification is enough for the jurisdictions you target.
+3. If the answer is unclear: launch Basic Launch **without ByteBrew** (build with `VITE_ANALYTICS_ENABLED=false`).
+   The CrazyGames dashboard still gives players, average playtime, conversion and retention [OFICIAL, requirements
+   intro].
+
+## 6. What the future privacy policy must cover — REQUIRES OWNER/LEGAL REVIEW BEFORE PROD
+
+This repository does not ship a policy. Checklist of content, derived from the facts above (not legal advice):
+
+- [ ] Name of the game (Project Needle) and of the controller / developer, with a contact address.
+- [ ] That analytics is optional, off until the player allows it, and how to withdraw (Esc → Settings → Privacy →
+      "Share anonymous gameplay statistics" off).
+- [ ] Analytics provider: ByteBrew, with a link to its privacy policy (https://docs.bytebrew.io/BBSettings/privacypolicy);
+      ByteBrew acts as processor for developers' end users [OFICIAL].
+- [ ] Purpose: gameplay analytics and product improvement (progress, purchases, performance, errors).
+- [ ] Data: gameplay events (§4); what ByteBrew collects (§3: identifiers, cookies, IP, country, device and screen
+      info, language, time stamps).
+- [ ] Cookies / identifiers: `bb_u_id`, `bb_u_h_init`, `bb_tr_on`, and that withdrawal does not delete them.
+- [ ] Local storage keys of the game (§3) and what the CrazyGames Data module does with them (synced to the
+      player's CrazyGames account when logged in) [OFICIAL].
+- [ ] Retention: ByteBrew keeps End User Data up to 24 months unless the developer directs otherwise [OFICIAL];
+      decide and state your own retention setting.
+- [ ] International transfers (ByteBrew stores data in the U.S. and possibly other countries [OFICIAL]).
+- [ ] Rights of the player according to the applicable jurisdiction, and how to exercise them (for data held by
+      ByteBrew: the ByteBrew user id is in the `bb_u_id` cookie).
+- [ ] Minors (§5): the position you decide on.
+- [ ] Hosted at an https URL → `VITE_PRIVACY_POLICY_URL`.
+
+## 7. Turning analytics off
+
+| Who | How |
+|---|---|
+| Player | "Continue without analytics", or Settings → Privacy toggle off |
+| One page load | `?analytics=0` |
+| Whole build | `VITE_ANALYTICS_ENABLED=false`, empty keys, or no `VITE_PRIVACY_POLICY_URL` |
+
+## 8. Known SDK facts (bytebrew-web-sdk 1.0.1, installed version) [CÓDIGO + QA]
+
+- API used: `initializeByteBrew`, `isByteBrewInitialized`, `newCustomEvent(name, {key: "value"})`, `stopTracking`,
+  `restartTracking` (all present in `dist/types/ByteBrew.d.ts`). Remote configs are not used.
+- The documentation says initialisation can be delayed until the user consents [OFICIAL]: that is what the game does.
+- Last npm publish 2024-07-02; obfuscated bundle; `npm audit` flags `uuid` (BUGS B036).
+
+## 9. Sources (checked 2026-09-27)
+
+- CrazyGames: https://docs.crazygames.com/ · https://docs.crazygames.com/requirements/intro/ ·
+  https://docs.crazygames.com/requirements/technical/#user-consent · https://docs.crazygames.com/requirements/gameplay/ ·
+  https://docs.crazygames.com/sdk/data/ · https://docs.crazygames.com/other/aps/ ·
+  https://docs.crazygames.com/resources/partners/#bytebrew-analytics
+- ByteBrew: https://docs.bytebrew.io/sdk/javascript · https://docs.bytebrew.io/BBSettings/privacypolicy ·
+  https://docs.bytebrew.io/BBSettings/termsservice · https://docs.bytebrew.io/BBSettings/dpa
