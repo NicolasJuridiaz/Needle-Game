@@ -69,6 +69,14 @@ export class Hud implements UIPart {
   private carryFrac = -1;
   private barrowFrac = -1;
   private fullFlash = 0;
+  /** Stamina bar (bottom centre): shown while in use or not full, fades out when full and idle. */
+  private staminaBox!: HTMLElement;
+  private staminaFill!: HTMLElement;
+  private staminaVisible!: ClassSlot;
+  private staminaLow!: ClassSlot;
+  private staminaFrac = -1;
+  private staminaShowT = 0;
+  private lastStamina = -1;
 
   private readonly prompt: HTMLElement;
   private readonly promptVisible: ClassSlot;
@@ -156,6 +164,12 @@ export class Hud implements UIPart {
     this.crossHay = new ClassSlot(cross, 'is-hay');
     this.crossTarget = new ClassSlot(cross, 'is-target');
 
+    this.staminaBox = h('div', 'pn-stamina', el);
+    this.staminaBox.innerHTML = '<span class="pn-stamina-label">STAMINA</span>';
+    this.staminaFill = h('i', 'pn-bar-fill', h('div', 'pn-bar pn-stamina-bar', this.staminaBox));
+    this.staminaVisible = new ClassSlot(this.staminaBox, 'is-on');
+    this.staminaLow = new ClassSlot(this.staminaBox, 'is-low');
+
     this.carryBox = h('div', 'pn-carry', el);
     this.carryVisible = new ClassSlot(this.carryBox, 'is-on');
     this.carryFull = new ClassSlot(this.carryBox, 'is-full');
@@ -214,6 +228,7 @@ export class Hud implements UIPart {
     env.listen('money:changed', (e) => { if (e.delta < 0) replayClass(this.moneyChip, 'is-spend'); });
     env.listen('needle:found', () => this.refreshNeedles());
     env.listen('player:denied', (e) => this.message(e.reason, 'bad'));
+    env.listen('player:tired', () => { this.staminaShowT = 1.5; replayClass(this.staminaBox, 'is-bump'); this.message('Too tired - catch your breath', 'warn'); });
     env.listen('player:full', () => { this.fullFlash = 1.2; replayClass(this.carryBox, 'is-bump'); this.message('Carry full - sell or deposit it (E)', 'warn'); });
     env.listen('game:saved', () => { this.savedTimer = 1.8; replayClass(this.saved, 'is-on'); });
   }
@@ -225,6 +240,8 @@ export class Hud implements UIPart {
     const ctx = this.env.ctx;
     const sim = ctx.sim;
     const prog = sim.progress;
+
+    this.updateStamina(dt, mode);
 
     // count-up (per frame, DOM only on integer change)
     const k = 1 - Math.exp(-dt * 9);
@@ -259,6 +276,19 @@ export class Hud implements UIPart {
     if (this.slow < SLOW_DT) return;
     this.slow = 0;
     this.slowUpdate(mode);
+  }
+
+  /** Stamina bar, every frame (the bar tracks sprinting smoothly). */
+  private updateStamina(dt: number, mode: GameMode): void {
+    const st = this.env.ctx.sim.player.stamina;
+    if (st.value < this.lastStamina - 1e-6) this.staminaShowT = 1.2; // just spent: keep the bar up a moment
+    this.lastStamina = st.value;
+    if (this.staminaShowT > 0) this.staminaShowT -= dt;
+    this.staminaVisible.set(mode === 'play' && (st.value < st.max - 0.5 || this.staminaShowT > 0));
+    this.staminaLow.set(st.exhausted || st.fraction < 0.2);
+    const sf = Math.round(st.fraction * 200) / 200;
+    if (sf !== this.staminaFrac) { this.staminaFrac = sf; this.staminaFill.style.transform = `scaleX(${sf})`; }
+
   }
 
   private slowUpdate(mode: GameMode): void {
@@ -297,8 +327,8 @@ export class Hud implements UIPart {
       this.orderMore.set(active.length > 1 ? `+${active.length - 1}` : '');
     }
 
-    // ----- carry
     const player = sim.player;
+    // ----- carry
     const cap = Math.max(1, carryCapacity(sim));
     const w = player.carry.weight();
     const full = w >= cap - 1e-3;

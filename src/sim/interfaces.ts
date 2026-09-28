@@ -118,6 +118,8 @@ export interface IHayField {
 }
 
 export interface HaySave {
+  /** Grid columns the arrays were saved with (absent before the compact layout: inferred from the length). */
+  cols?: number;
   /** Quantised heights (uint16, 1 unit = 1 mm) base64-encoded. */
   heights: string;
   blocked: string;

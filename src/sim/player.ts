@@ -1,6 +1,7 @@
 import { WORLD } from '../config/world';
 import { Inventory } from './inventory';
 import type { PlayerSave, WheelbarrowState } from './interfaces';
+import { Stamina } from './stamina';
 import type { ToolId, Vec3 } from './types';
 
 /**
@@ -16,6 +17,8 @@ export class PlayerState {
   wheelbarrow: WheelbarrowState | null = null;
   /** Seconds until the equipped tool can act again. */
   cooldown = 0;
+  /** Physical effort (sprint, manual digging). Not saved: always rested after loading. */
+  readonly stamina = new Stamina();
 
   serialize(): PlayerSave {
     return {
@@ -29,6 +32,7 @@ export class PlayerState {
   }
 
   deserialize(s: PlayerSave): void {
+    this.stamina.reset();
     this.pos = { ...s.pos };
     this.yaw = s.yaw;
     this.pitch = s.pitch;

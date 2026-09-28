@@ -150,6 +150,8 @@ describe('extraction', () => {
     expect(rake.network).toBeGreaterThanOrEqual(0);
     expect(sim.progress.stats.hayExtractedMachine).toBeGreaterThan(50);
     expect(hopper.contents().hay).toBeGreaterThan(30);
+    // Automation never spends the player's stamina (only direct player actions do).
+    expect(sim.player.stamina.value).toBe(sim.player.stamina.max);
     expect(cycles.length).toBeGreaterThan(2);
     expect(rake.anim.width).toBeCloseTo(sim.stat('rake.width'));
     const info = rake.info(sim);
@@ -168,6 +170,7 @@ describe('extraction', () => {
     run(sim, 60, () => { if (hopper.contents().hay > 300) hopper.clearContents(); if (gen.contents().hay < 20) fuel(sim, gen, 100); });
     const rate = (sim.progress.stats.hayExtractedArm - a0) / 60;
     expect(arm.powerSatisfaction).toBe(1);
+    expect(sim.player.stamina.value).toBe(sim.player.stamina.max); // robots never tire the player
     expect(rate).toBeGreaterThan(7.5);
     expect(rate).toBeLessThan(12.5);
   });

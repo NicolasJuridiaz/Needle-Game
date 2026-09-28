@@ -1,6 +1,7 @@
+import { strawMound } from './strawHeap';
 import type { ModelInstance } from './api';
 import { cachedTemplate } from './cache';
-import { C, hayMound, lampMast, LEVEL_H, ports, railing, skid } from './kit';
+import { C, lampMast, LEVEL_H, ports, railing, skid } from './kit';
 import { shade } from './parts';
 import { af, HIDDEN, RigModel, TemplateBuilder, type Template } from './rig';
 
@@ -29,7 +30,7 @@ function sellTemplate(): Template {
   p.decal('jokeHay', 2.2, 0.275, { pos: [-1.452, 0.75, 0], normal: [-1, 0, 0] });
   // funnel with a hay heap inside
   p.shell('paint', YEL_DK, 2.3, 3.2, 2.75, 3.75, 0.72, 0.06, { pos: [-0.05, SELL.top + 0.04, 0] }, 0x3a3226);
-  p.add('decal', hayMound(1, 1, 0.3, 8, 61), 0xffffff, { pos: [-0.05, SELL.top + 0.12, 0], scale: [2.1, 1, 3.0] });
+  p.add('matte', strawMound(0.3, 61), null, { pos: [-0.05, SELL.top + 0.12, 0], scale: [2.1, 1, 3.0] });
   for (const s of [-1, 1]) p.hazard(2.6, 0.16, { pos: [-0.05, SELL.top + 0.64, s * 1.873], normal: [0, 0.14, s] });
   // sign on two posts at the back
   for (const s of [-1, 1]) {

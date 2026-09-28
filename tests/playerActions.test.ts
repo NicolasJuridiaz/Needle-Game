@@ -1,3 +1,4 @@
+import { HAND_LEVEL_PICKUP } from '../src/config/stamina';
 import { describe, expect, it } from 'vitest';
 import { BASE_STATS } from '../src/config/stats';
 import { WORLD } from '../src/config/world';
@@ -65,6 +66,9 @@ const parkBarrow = (sim: Sim, x: number, z: number, held = false) => {
 
 // ---------------------------------------------------------------------------------------------
 
+/** Hands grab at Lv.1 (config/stamina.ts HAND_LEVEL_PICKUP). */
+const G = HAND_LEVEL_PICKUP[0];
+
 describe('carryCapacity', () => {
   it('is the carry stat plus the bucket bonus once the bucket is owned', () => {
     const { sim, own } = setup();
@@ -81,13 +85,13 @@ describe('playerDig', () => {
   it('extracts the tool amount at its radius, credits it and starts the cooldown', () => {
     const { sim, fake, of } = setup();
     const r = playerDig(sim, 'hands', 3, 1, 4);
-    expect(r).toEqual({ amount: 2, full: false, needleFound: -1, toBarrow: 0 });
-    expect(fake.calls).toEqual([{ x: 3, z: 4, radius: BASE_STATS['tool.hands.radius'], maxUnits: 2 }]);
-    expect(sim.player.carry.hay).toBe(2);
+    expect(r).toEqual({ amount: G, full: false, needleFound: -1, toBarrow: 0 });
+    expect(fake.calls).toEqual([{ x: 3, z: 4, radius: BASE_STATS['tool.hands.radius'], maxUnits: G }]);
+    expect(sim.player.carry.hay).toBe(G);
     expect(sim.player.cooldown).toBe(BASE_STATS['tool.hands.interval']);
-    expect(sim.progress.stats.hayExtractedManual).toBe(2);
-    expect(of('hay:extracted')).toEqual([{ amount: 2, pos: { x: 3, y: 1.2, z: 4 }, source: 'manual' }]);
-    expect(of('player:dig')).toEqual([{ tool: 'hands', amount: 2, pos: { x: 3, y: 1.2, z: 4 }, full: false }]);
+    expect(sim.progress.stats.hayExtractedManual).toBe(G);
+    expect(of('hay:extracted')).toEqual([{ amount: G, pos: { x: 3, y: 1.2, z: 4 }, source: 'manual' }]);
+    expect(of('player:dig')).toEqual([{ tool: 'hands', amount: G, pos: { x: 3, y: 1.2, z: 4 }, full: false }]);
   });
 
   it('respects the cooldown', () => {
@@ -96,7 +100,7 @@ describe('playerDig', () => {
     expect(playerDig(sim, 'hands', 0, 0, 0).amount).toBe(0);
     expect(fake.calls).toHaveLength(1);
     sim.player.cooldown = 0;
-    expect(playerDig(sim, 'hands', 0, 0, 0).amount).toBe(2);
+    expect(playerDig(sim, 'hands', 0, 0, 0).amount).toBe(G);
     expect(fake.calls).toHaveLength(2);
   });
 
@@ -163,8 +167,8 @@ describe('wheelbarrow overflow', () => {
     const barrow = parkBarrow(sim, 3, 4); // 5 m away, collect range 6 m
     sim.player.carry.add('hay', 20);
     const r = playerDig(sim, 'hands', 1, 1, 1);
-    expect(r).toEqual({ amount: 2, full: false, needleFound: -1, toBarrow: 2 });
-    expect(barrow.inv.hay).toBe(2);
+    expect(r).toEqual({ amount: G, full: false, needleFound: -1, toBarrow: G });
+    expect(barrow.inv.hay).toBe(G);
     expect(sim.player.carry.hay).toBe(20);
   });
 

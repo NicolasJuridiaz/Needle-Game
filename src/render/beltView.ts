@@ -19,7 +19,7 @@ const TILE_KINDS: readonly ConveyorGeometryKind[] = ['straight', 'curveL', 'curv
 const ITEM_KINDS: readonly ItemType[] = ['hay', 'bale', 'wrapped'];
 const ITEM_MODEL: Record<ItemType, ItemModelKind> = { hay: 'item:hay', bale: 'item:bale', wrapped: 'item:wrapped' };
 /** Hay rides the belts as mini-heaps in several shapes (picked per item id), so a belt never shows clones. */
-const HAY_VARIANTS: readonly ItemModelKind[] = ['item:hay', 'item:hay1', 'item:hay2'];
+const HAY_VARIANTS: readonly ItemModelKind[] = ['item:hay', 'item:hay1', 'item:hay2', 'item:hay3', 'item:hay4'];
 const ITEM_COLOR: Record<ItemType, number> = { hay: COLORS.hay, bale: COLORS.hayDark, wrapped: COLORS.wrapFilm };
 /** Belt texture repeats per metre of belt (UV v assumed to run 0..1 per metre along the belt). */
 const BELT_REPEAT_PER_M = 1;

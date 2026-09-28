@@ -1,3 +1,4 @@
+import { HAND_LEVEL_PICKUP } from '../src/config/stamina';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BALANCE } from '../src/config/balance';
 import { BUILDABLES } from '../src/config/buildables';
@@ -173,9 +174,9 @@ describe('stat folding', () => {
 
   it('invalidates the cache on unlock and on needle found', () => {
     const { p } = setup();
-    expect(p.stat('tool.hands.dig')).toBe(2);
+    expect(p.stat('tool.hands.dig')).toBe(HAND_LEVEL_PICKUP[0]);
     unlockWithWP(p, 'p_hands', 1);
-    expect(p.stat('tool.hands.dig')).toBe(4);
+    expect(p.stat('tool.hands.dig')).toBe(HAND_LEVEL_PICKUP[1]);
     expect(p.stat('belt.speed')).toBe(1.667);
     p.onNeedleFound(0, 'manual', ORIGIN);
     p.onNeedleFound(1, 'manual', ORIGIN);

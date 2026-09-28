@@ -14,7 +14,7 @@ export const BASE_STATS = {
   'player.interactRange': 3.2,   // m
 
   // ----- Tools (manual) ---------------------------------------------------------
-  'tool.hands.dig': 2,           // hay per grab
+  'tool.hands.dig': 1,           // hay per grab at Hands Lv.1 (Lv.2-5 add steps: config/stamina.ts HAND_LEVEL_PICKUP)
   'tool.hands.interval': 0.3,    // s between grabs
   'tool.hands.reach': 2.6,       // m
   'tool.hands.radius': 0.35,     // m dig radius

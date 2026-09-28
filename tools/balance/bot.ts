@@ -18,6 +18,7 @@ import { WORLD } from '../../src/config/world';
 import type { Building } from '../../src/sim/building';
 import { buildingCenter, localToOffset, rotatedSize } from '../../src/sim/grid';
 import { BUILDABLES } from '../../src/config/buildables';
+import { STAMINA } from '../../src/config/stamina';
 import {
   carryCapacity, depositToIntake, detectorReading, intakeDropPoint, playerDig, playerVacuum, spawnWheelbarrow, toggleWheelbarrow,
 } from '../../src/sim/playerActions';
@@ -76,26 +77,35 @@ const PLAN: [string, number][] = [
 
 const TOOL_PRIORITY: (ToolId | 'wheelbarrow')[] = ['shovel', 'bucket', 'detector', 'pitchfork', 'wheelbarrow', 'vacuum'];
 
-// ----- Layout (row z = TZ, items flow west) --------------------------------------------------------
+// ----- Layout (compact hall: pile foot ~14 m from the chute) --------------------------------------------
+// Trunk row z = TZ flows west: head rake -> hopper -> scanner -> processing splitter -> fuel splitter -> chute.
+// The processing splitter's side output climbs to row z = PROC_Z and runs west through silo -> compressor ->
+// wrapper, then down column x = -30 into the chute's north input (it replaced the old "bypass": same 50/50 split).
 const TZ = 0;
 const CORNER_X = -29;           // trunk turns south here, enters the chute's east input at (-30, 5)
-const WRAP_X = -28;             // wrapper cells x -28..-26
-const COMP_X = -24;             // compressor cells x -24..-22
-const SILO_X = -20;             // silo cells x -20..-18 (z -1..1)
-const PROC_SPLIT_X = -17;       // processing splitter; north output = bypass
-const FUEL_SPLIT_X = -15;       // fuel splitter: generators south/north
+/** Everything on the pile side is laid out relative to the pile (WORLD.pile.cx; the old wide hall had cx = 5). */
+const PX = Math.round(WORLD.pile.cx) - 5;
+const RAKE_X0 = -8 + PX;        // head rake (rot 0) cells RAKE_X0..+1, z -1..1
+const HEAD_X0 = RAKE_X0 - 1;    // initial trunk head
+const HOPPER_CELL: Cell = { x: HEAD_X0 - 1, z: 1, level: 0 }; // rot 3: output north onto the trunk
+const SCAN_X = HOPPER_CELL.x - 3; // scanner MK1 cells SCAN_X..+2 (MK2 one more)
+const PROC_SPLIT_X = SCAN_X - 1; // processing splitter; north output = processing branch
+const FUEL_SPLIT_X = PROC_SPLIT_X - 1; // fuel splitter: generators south/north
 const GEN_SLOTS: { cell: Cell; rot: Rot }[] = [
-  { cell: { x: -16, z: 1, level: 0 }, rot: 1 },   // input at (-15, 1) facing north
-  { cell: { x: -16, z: -3, level: 0 }, rot: 3 },  // input at (-15, -1) facing south
+  { cell: { x: FUEL_SPLIT_X - 1, z: 1, level: 0 }, rot: 1 },   // input at (FUEL, 1) facing north
+  { cell: { x: FUEL_SPLIT_X - 1, z: -3, level: 0 }, rot: 3 },  // input at (FUEL, -1) facing south
 ];
 const MAX_GENERATORS = 4;
-const SCAN_X = -13;             // scanner MK1 cells x -13..-11 (MK2: -13..-10)
-const HOPPER_CELL: Cell = { x: -10, z: 1, level: 0 }; // rot 3: output at (-10, 1) facing north onto the trunk
-/** Feeder arcs around the pile foot: row z = +-ARC_Z flowing west, then along x = -10 into the hoppers. */
+/** Processing row (flows west): silo, compressor, wrapper back to back, then column x = -30 into the chute. */
+const PROC_Z = -6;
+const SILO_X = PROC_SPLIT_X - 3; // silo cells SILO_X..+2 (z PROC_Z-1..PROC_Z+1)
+const COMP_X = SILO_X - 3;
+const WRAP_X = COMP_X - 3;
+/** Feeder arcs around the pile foot: row z = +-ARC_Z flowing west into their own chute inputs. */
 const ARC_Z = 12;
-const ARC_X_EAST = 17;
-const HEAD_X0 = -9;             // initial trunk head
-const RAKE_X0 = -8;             // head rake (rot 0) cells x -8..-7, z -1..1
+const ARC_X_EAST = Math.min(17 + PX, WORLD.interior.maxX - 3);
+/** Arc scanners sit just west of the arms region (old hall: x -9..-6). */
+const ARC_SCAN_X = -9 + PX;
 
 type Stage = 'manual' | 'rake' | 'trunk';
 
@@ -107,10 +117,11 @@ const ARC_GEN_X = -20;
 
 /** Cells reserved by the layout (poles must never land there). [x0, z0, x1, z1] inclusive. */
 const RESERVED: [number, number, number, number][] = [
-  [-31, -5, 20, -4],              // bypass row z = -4 (and a margin)
-  [-31, -5, -29, 9],              // chute columns
-  [-30, -1, -9, 1],               // trunk + inline machines (z -1..1)
-  [-17, -4, -14, 4],              // generators + splitters
+  [-31, PROC_Z - 2, PROC_SPLIT_X, PROC_Z + 2], // processing row
+  [PROC_SPLIT_X, PROC_Z, PROC_SPLIT_X, -1],    // branch column
+  [-31, PROC_Z, -29, 9],          // chute columns
+  [-30, -1, HEAD_X0, 1],          // trunk + inline machines (z -1..1)
+  [FUEL_SPLIT_X - 1, -4, FUEL_SPLIT_X, 4], // generators + splitters
   [HOPPER_CELL.x, HOPPER_CELL.z, HOPPER_CELL.x + 1, HOPPER_CELL.z + 1],
   [S_ARC_END_X, 8, S_ARC_END_X, ARC_Z], [N_ARC_END_X, -ARC_Z, N_ARC_END_X, 4], // arc columns into the chute
   [N_ARC_END_X, ARC_Z - 1, ARC_X_EAST, ARC_Z], [N_ARC_END_X, -ARC_Z, ARC_X_EAST, -ARC_Z + 1], // arc rows (+ scanners)
@@ -215,13 +226,32 @@ export class Bot {
     }
   }
 
+  /** Out of stamina while digging: wait (like a player would) until about half the bar is back. */
+  private catchBreath(): void {
+    const st = this.sim.player.stamina;
+    let guard = 0;
+    while (st.fraction < 0.5 && guard++ < 200) this.advance(0.25);
+  }
+
   private moveTo(x: number, z: number): void {
     const p = this.sim.player.pos;
     const dist = Math.hypot(x - p.x, z - p.z);
     if (dist < 0.05) return;
-    let speed = this.sim.stat('player.moveSpeed') * (dist > 6 ? this.sim.stat('player.sprintMul') : 1);
-    if (this.sim.player.wheelbarrow?.held) speed *= this.sim.stat('wheelbarrow.speedMul');
-    this.advance(dist / speed + 0.3);
+    // Sprint long walks while stamina lasts (like a player holding Shift), then walk the rest.
+    const walk = this.sim.stat('player.moveSpeed') * (this.sim.player.wheelbarrow?.held ? this.sim.stat('wheelbarrow.speedMul') : 1);
+    const run = walk * this.sim.stat('player.sprintMul');
+    let left = dist;
+    const st = this.sim.player.stamina;
+    if (dist > 6) {
+      while (left > 1e-3 && st.canSprint()) {
+        const dt = Math.min(0.25, left / run);
+        const paid = st.drain(STAMINA.sprintPerSecond, dt);
+        this.advance(dt);
+        left -= run * dt * paid + walk * dt * (1 - paid);
+      }
+    }
+    if (left > 1e-3) this.advance(left / walk);
+    this.advance(0.3);
     p.x = x; p.z = z;
     p.y = Math.max(0, this.sim.hay.heightAt(x, z) - 0.1);
   }
@@ -409,10 +439,12 @@ export class Bot {
       if (tool === 'vacuum') {
         const r = playerVacuum(sim, 0.25, t2.x, t2.height, t2.z);
         this.advance(0.25);
+        if (r.tired) { this.catchBreath(); continue; }
         got += r.amount;
         if (r.full || r.amount <= 0) break;
       } else {
         const r = playerDig(sim, tool, t2.x, t2.height, t2.z);
+        if (r.tired) { this.catchBreath(); continue; }
         got += r.amount;
         this.advance(sim.stat(`tool.${tool}.interval`));
         if (r.full) break;
@@ -544,19 +576,19 @@ export class Bot {
     return b ? this.sim.remove(b.id) : true;
   }
 
-  /** Replace trunk belts under a machine footprint (x0..x1 on the trunk row) with the machine. */
-  private insertMachine(type: BuildingType, cell: Cell, rot: Rot, x0: number, x1: number): Building | null {
+  /** Replace belts under a machine footprint (x0..x1 on row `rowZ`, the trunk by default) with the machine. */
+  private insertMachine(type: BuildingType, cell: Cell, rot: Rot, x0: number, x1: number, rowZ = TZ): Building | null {
     const sim = this.sim;
     if (!sim.progress.buildingUnlocked(type)) return null;
     if (this.spendable() < sim.nextCost(type) + 200) { this.waitingMoney ||= `${type} ($${sim.nextCost(type)})`; return null; }
     const removed: number[] = [];
     for (let x = x0; x <= x1; x++) {
-      const b = sim.buildingAtCell(x, TZ, 0);
+      const b = sim.buildingAtCell(x, rowZ, 0);
       if (b && b.type !== 'conveyor') return null;
       if (b) { sim.remove(b.id); removed.push(x); }
     }
     const m = this.tryPlace(type, cell, rot);
-    if (!m) { for (const x of removed) this.tryPlace('conveyor', { x, z: TZ, level: 0 }, 2); return null; }
+    if (!m) { for (const x of removed) this.tryPlace('conveyor', { x, z: rowZ, level: 0 }, 2); return null; }
     this.ensurePower(m);
     return m;
   }
@@ -670,9 +702,9 @@ export class Bot {
     // Scanner MK2: into the south feeder arc next to its corner (4 free cells; the MK1 stays on the trunk).
     if (this.arcs.south && !sim.buildingsOfType('scannerMk2').length && pr.buildingUnlocked('scannerMk2')
       && money() >= sim.nextCost('scannerMk2') + 2000) {
-      const cell: Cell = { x: -9, z: ARC_Z - 1, level: 0 };
+      const cell: Cell = { x: ARC_SCAN_X, z: ARC_Z - 1, level: 0 };
       const removed: { x: number; z: number; type: BuildingType; rot: Rot }[] = [];
-      for (let x = -9; x <= -6; x++) for (const z of [ARC_Z - 1, ARC_Z]) {
+      for (let x = ARC_SCAN_X; x <= ARC_SCAN_X + 3; x++) for (const z of [ARC_Z - 1, ARC_Z]) {
         const b = sim.buildingAtCell(x, z, 0);
         if (b && (b.type === 'conveyor' || b.type === 'roboticArm' || b.type === 'powerPole')) { removed.push({ x: b.cell.x, z: b.cell.z, type: b.type, rot: b.rot }); sim.remove(b.id); }
       }
@@ -690,14 +722,15 @@ export class Bot {
       this.buildBypass();
     }
     if (this.bypassBuilt) {
-      if (at(SILO_X + 1)?.type === 'conveyor' && pr.buildingUnlocked('silo')) {
-        if (this.insertMachine('silo', { x: SILO_X, z: TZ - 1, level: 0 }, 2, SILO_X, SILO_X + 2)) this.mark('line', 'silo');
+      const atP = (x: number) => sim.buildingAtCell(x, PROC_Z, 0);
+      if (atP(SILO_X + 1)?.type === 'conveyor' && pr.buildingUnlocked('silo')) {
+        if (this.insertMachine('silo', { x: SILO_X, z: PROC_Z - 1, level: 0 }, 2, SILO_X, SILO_X + 2, PROC_Z)) this.mark('line', 'silo');
       }
-      if (at(COMP_X + 1)?.type === 'conveyor' && pr.buildingUnlocked('compressor')) {
-        if (this.insertMachine('compressor', { x: COMP_X, z: TZ - 1, level: 0 }, 2, COMP_X, COMP_X + 2)) this.mark('line', 'compressor');
+      if (atP(COMP_X + 1)?.type === 'conveyor' && pr.buildingUnlocked('compressor')) {
+        if (this.insertMachine('compressor', { x: COMP_X, z: PROC_Z - 1, level: 0 }, 2, COMP_X, COMP_X + 2, PROC_Z)) this.mark('line', 'compressor');
       }
-      if (at(WRAP_X + 1)?.type === 'conveyor' && sim.buildingsOfType('compressor').length && pr.buildingUnlocked('wrapper')) {
-        if (this.insertMachine('wrapper', { x: WRAP_X, z: TZ - 1, level: 0 }, 2, WRAP_X, WRAP_X + 2)) this.mark('line', 'wrapper');
+      if (atP(WRAP_X + 1)?.type === 'conveyor' && sim.buildingsOfType('compressor').length && pr.buildingUnlocked('wrapper')) {
+        if (this.insertMachine('wrapper', { x: WRAP_X, z: PROC_Z - 1, level: 0 }, 2, WRAP_X, WRAP_X + 2, PROC_Z)) this.mark('line', 'wrapper');
       }
     }
 
@@ -721,17 +754,17 @@ export class Bot {
       else if (this.arcs.south && !this.arcs.north && money() >= sim.nextCost('conveyor') * 60 + extractorCost) this.buildArc(-1);
     }
     // North line: its MK1 becomes an MK2 once the south line has one (the MK1 would cap the line).
-    const nMk1 = sim.buildingAtCell(-9, -ARC_Z, 0);
+    const nMk1 = sim.buildingAtCell(ARC_SCAN_X, -ARC_Z, 0);
     if (nMk1?.type === 'scannerMk1' && sim.buildingsOfType('scannerMk2').length >= 1 && pr.buildingUnlocked('scannerMk2')
       && this.spendable() >= sim.nextCost('scannerMk2') + 3000) {
       sim.remove(nMk1.id);
-      for (let x = -9; x <= -7; x++) if (!sim.buildingAtCell(x, -ARC_Z, 0)) this.tryPlace('conveyor', { x, z: -ARC_Z, level: 0 }, 2);
-      if (this.insertOnRow('scannerMk2', -ARC_Z, -9, 4, -ARC_Z - 1)) this.mark('line', 'scanner MK2 on the north line');
+      for (let x = ARC_SCAN_X; x <= ARC_SCAN_X + 2; x++) if (!sim.buildingAtCell(x, -ARC_Z, 0)) this.tryPlace('conveyor', { x, z: -ARC_Z, level: 0 }, 2);
+      if (this.insertOnRow('scannerMk2', -ARC_Z, ARC_SCAN_X, 4, -ARC_Z - 1)) this.mark('line', 'scanner MK2 on the north line');
     }
     // A scanner on the north line too (the MK2 goes on the south line), or its needles are tossed back.
-    if (this.arcs.north && sim.buildingsOfType('scannerMk1').length === 1 && sim.buildingAtCell(-9, -ARC_Z, 0)?.type === 'conveyor'
+    if (this.arcs.north && sim.buildingsOfType('scannerMk1').length === 1 && sim.buildingAtCell(ARC_SCAN_X, -ARC_Z, 0)?.type === 'conveyor'
       && pr.buildingUnlocked('scannerMk1') && sim.ownedCount('roboticArm') >= 4) {
-      if (this.insertOnRow('scannerMk1', -ARC_Z, -9, 3, -ARC_Z - 1)) this.mark('line', 'scanner MK1 on the north line');
+      if (this.insertOnRow('scannerMk1', -ARC_Z, ARC_SCAN_X, 3, -ARC_Z - 1)) this.mark('line', 'scanner MK1 on the north line');
     }
 
     // 5) Extraction along the belts (only while power is not the bottleneck).
@@ -855,16 +888,16 @@ export class Bot {
     const sp = this.insertMachine('splitter', { x: PROC_SPLIT_X, z: TZ, level: 0 }, 2, PROC_SPLIT_X, PROC_SPLIT_X);
     if (!sp) return;
     const tiles: { x: number; z: number; rot: Rot }[] = [];
-    for (let z = TZ - 1; z > -4; z--) tiles.push({ x: PROC_SPLIT_X, z, rot: 3 });
-    tiles.push({ x: PROC_SPLIT_X, z: -4, rot: 2 });
-    for (let x = PROC_SPLIT_X - 1; x > -30; x--) tiles.push({ x, z: -4, rot: 2 });
-    for (let z = -4; z < 5; z++) tiles.push({ x: -30, z, rot: 1 });
+    for (let z = TZ - 1; z > PROC_Z; z--) tiles.push({ x: PROC_SPLIT_X, z, rot: 3 });
+    tiles.push({ x: PROC_SPLIT_X, z: PROC_Z, rot: 2 });
+    for (let x = PROC_SPLIT_X - 1; x > -30; x--) tiles.push({ x, z: PROC_Z, rot: 2 });
+    for (let z = PROC_Z; z < 5; z++) tiles.push({ x: -30, z, rot: 1 });
     for (const t of tiles) {
       if (sim.buildingAtCell(t.x, t.z, 0)) continue;
       if (!this.tryPlace('conveyor', { x: t.x, z: t.z, level: 0 }, t.rot)) this.mark('warn', `bypass tile blocked at ${t.x},${t.z}`, false);
     }
     this.bypassBuilt = true;
-    this.mark('line', 'processing splitter + bypass');
+    this.mark('line', 'processing splitter + processing row');
   }
 
   /** Move the head rake forward when it runs dry and extend the trunk behind it. */
@@ -900,7 +933,7 @@ export class Bot {
     const out: Building[] = [];
     for (const b of this.sim.buildingsOfType('conveyor')) {
       if (b.cell.x < HEAD_X0 - 1 && Math.abs(b.cell.z) < ARC_Z - 1) continue; // processing / chute area
-      if (b.cell.x < -11) continue;
+      if (b.cell.x < -11 + PX) continue;
       out.push(b);
     }
     return out;
@@ -913,7 +946,7 @@ export class Bot {
   /** Cells kept free for the line scanners (MK2 on the south line, MK1 then MK2 on the north line). */
   private inScannerZone(type: BuildingType, cell: Cell, rot: Rot): boolean {
     const [w, d] = rotatedSize(BUILDABLES[type], rot);
-    const zones: [number, number, number, number][] = [[-9, ARC_Z - 1, -6, ARC_Z], [-9, -ARC_Z - 1, -6, -ARC_Z]];
+    const zones: [number, number, number, number][] = [[ARC_SCAN_X, ARC_Z - 1, ARC_SCAN_X + 3, ARC_Z], [ARC_SCAN_X, -ARC_Z - 1, ARC_SCAN_X + 3, -ARC_Z]];
     return zones.some(([x0, z0, x1, z1]) => cell.x <= x1 && cell.x + w - 1 >= x0 && cell.z <= z1 && cell.z + d - 1 >= z0);
   }
 

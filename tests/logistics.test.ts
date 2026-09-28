@@ -113,6 +113,7 @@ describe('logistics: belts', () => {
     expect(rate).toBeGreaterThan(47.5);
     expect(rate).toBeLessThan(52.5);
     expect(belts[0].status).toBe('running');
+    expect(sim.player.stamina.value).toBe(sim.player.stamina.max); // belts never tire the player
     expect(sim.logistics.isLinked(belts[belts.length - 1], 1)).toBe(true);
   });
 

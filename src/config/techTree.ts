@@ -1,3 +1,5 @@
+import { WORLD } from './world';
+import { HAND_LEVEL_PICKUP } from './stamina';
 import type { BranchId, BuildingType, Effect, ToolId } from '../sim/types';
 
 /**
@@ -62,6 +64,8 @@ const set = (stat: string, value: number): Effect => ({ stat, op: 'set', value }
 const lvl = (cost: number, desc: string, ...effects: Effect[]): TechLevel => ({ cost, money: 0, desc, effects });
 /** WP + Money level. */
 const lvm = (cost: number, money: number, desc: string, ...effects: Effect[]): TechLevel => ({ cost, money, desc, effects });
+/** Hands Lv.N: additive step on the base grab so `tool.hands.dig` equals HAND_LEVEL_PICKUP[N-1] (config/stamina.ts). */
+const handStep = (level: number): Effect => up('tool.hands.dig', HAND_LEVEL_PICKUP[level - 1] - HAND_LEVEL_PICKUP[level - 2]);
 /** Adds level requirements. */
 const req = (l: TechLevel, ...r: string[]): TechLevel => ({ ...l, req: r });
 
@@ -82,10 +86,10 @@ export const TECH_NODES: TechNode[] = [
   // =====================================================================================
   { id: 'p_hands', name: 'Hands', branch: 'player', kind: 'upgrade', requires: [], icon: 'hands', pos: [0, 0], leveled: true, levelBase: 1,
     levels: [
-      lvm(1, 0, 'Grab twice as much hay per handful.', mul('tool.hands.dig', 2)),
-      lvm(1, 150, 'Reach +0.6 m and a wider grab.', up('tool.hands.reach', 0.6), mul('tool.hands.radius', 1.3)),
-      lvm(1, 600, 'Grab 30% faster.', mul('tool.hands.interval', 0.75)),
-      lvm(2, 2000, 'Big hands: +50% hay per grab, much wider.', mul('tool.hands.dig', 1.5), mul('tool.hands.radius', 1.4)),
+      lvm(1, 0, `Grab ${HAND_LEVEL_PICKUP[1]} hay per handful.`, handStep(2)),
+      lvm(1, 150, `Grab ${HAND_LEVEL_PICKUP[2]} hay per handful, reach +0.6 m and a wider grab.`, handStep(3), up('tool.hands.reach', 0.6), mul('tool.hands.radius', 1.3)),
+      lvm(1, 600, `Grab ${HAND_LEVEL_PICKUP[3]} hay per handful, 30% faster.`, handStep(4), mul('tool.hands.interval', 0.75)),
+      lvm(2, 2000, `Big hands: ${HAND_LEVEL_PICKUP[4]} hay per handful, much wider.`, handStep(5), mul('tool.hands.radius', 1.4)),
     ] },
   { id: 'p_carry', name: 'Carry Capacity', branch: 'player', kind: 'upgrade', requires: [], icon: 'carry', pos: [2, 0],
     levels: [
@@ -314,7 +318,7 @@ export const TECH_NODES: TechNode[] = [
     unlocks: { building: ['platform', 'stairs'] },
     levels: [lvl(2, 'Unlocks Platforms and Stairs: build a second floor.', set('global.platforms', 1))] },
   { id: 'f_expansion', name: 'Warehouse Expansion I', branch: 'power', kind: 'feature', requires: ['f_platform'], icon: 'expand', pos: [2, 2],
-    levels: [lvl(3, 'Knock down the north wall: +900 m² of factory floor.', set('global.warehouseExpansion', 1))] },
+    levels: [lvl(3, `Knock down the north wall: +${(WORLD.annex.maxX - WORLD.annex.minX) * (WORLD.annex.maxZ - WORLD.annex.minZ)} m² of factory floor.`, set('global.warehouseExpansion', 1))] },
 ];
 
 export const TECH_BY_ID: Record<string, TechNode> = Object.fromEntries(TECH_NODES.map((n) => [n.id, n]));

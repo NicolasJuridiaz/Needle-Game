@@ -179,10 +179,10 @@ describe('integration: full sim', () => {
     const sim = new Sim(15);
     rich(sim);
     unlock(sim, ['x_arm', 'f_generator', 'f_pole']);
-    const gen = place(sim, 'hayGenerator', -14, -8, 0);
-    sim.player.carry.add('hay', 150); sim.player.pos = { x: -16, y: 0, z: -6 }; gen.interact(sim);
-    place(sim, 'powerPole', -12, -2, 0);
     const edgeX = Math.floor(WORLD.pile.cx - WORLD.pile.rx) - 2;
+    const gen = place(sim, 'hayGenerator', edgeX - 5, -8, 0);
+    sim.player.carry.add('hay', 150); sim.player.pos = { x: edgeX - 7, y: 0, z: -6 }; gen.interact(sim);
+    place(sim, 'powerPole', edgeX - 3, -2, 0);
     const arms = [place(sim, 'roboticArm', edgeX, -6, 2), place(sim, 'roboticArm', edgeX, -4, 2), place(sim, 'roboticArm', edgeX, -2, 2),
       place(sim, 'roboticArm', edgeX, 0, 2), place(sim, 'roboticArm', edgeX, 2, 2)];
     sim.rebuildTopology();

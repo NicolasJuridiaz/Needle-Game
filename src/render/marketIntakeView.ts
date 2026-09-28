@@ -126,8 +126,7 @@ export class MarketIntakeView {
     this.root.add(this.highlight);
 
     // ----- hay bundles: straw mini-heaps (same family as the belt items), slight per-instance tint
-    const bg = strawHeapGeometry(0);
-    bg.scale(1.25, 1.25, 1.25);
+    const bg = strawHeapGeometry(2, { radius: 0.26, height: 0.24, sticks: 60 });
     const bm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
     this.disposables.push(bg, bm);
     this.bundles = new THREE.InstancedMesh(bg, bm, MAX_BUNDLES);

@@ -57,3 +57,7 @@ Prioridades: **P0** impide jugar · **P1** rompe sistema importante · **P2** bu
 | B051 | P2 | Render / cintas | Cintas con marco azul macizo y patas gruesas. Ahora: banda negra, laterales de acero finos y abocinados, postes finos (en elevadas, un caballete cada dos tramos). Splitter/merger abiertos (la banda se bifurca y los montones se ven pasar). | FIXED |
 | B052 | P3 | Economía / venta | El chute y `recordSale` aceptaban cualquier tipo de ítem que llegara. Lista blanca explícita `SELLABLE_ITEMS` (hay, bale, wrapped); todo lo demás se rechaza y nunca paga. | FIXED |
 | B053 | P2 | Mapa | Recorte del área jugable pedido por el owner: la captura de referencia no muestra ninguna línea marcada, no se ha tocado el mapa. | OPEN (esperando la línea) |
+| B054 | P2 | Render / paja pequeña | Los mini-montones (cintas, manos, intake, bandejas de máquinas) parecían bolas con unas hebras encima. Ahora son pilas hechas solo de palitos (prismas finos apilados, 5 variantes instanciadas; montones en máquinas con el mismo modelo). | FIXED |
+| B055 | P2 | Progresión / manos | Con las manos se cogían 2 unidades por agarre desde el principio y el jugador llenaba 20 en 3 s. Ahora Hands Lv.1..5 = 1, 3, 6, 12, 20 por agarre (D23). | FIXED |
+| B056 | P2 | Mapa | La zona de venta quedaba a ~22 m del montón. Nave compacta: 16,6 m (D25). | FIXED |
+

@@ -246,6 +246,11 @@ hidden needle from a tray/hopper/silo with E, the needle is FOUND ('manual') —
   as the old direct sale did); after `WORLD.intake.transitSeconds` (1.8 s) each load is sold with the same
   `recordSale(type, amount, viaBelt=false, pos)` call. E on the chute itself never sells (`interact` → false).
   The queue is saved in the chute's state (`intake`); older saves load with an empty belt.
+- **Stamina** (`src/sim/stamina.ts`, config `src/config/stamina.ts`): `player.stamina`, refilled in `Sim.tick`. Spent only by
+  direct player actions: `playerDig` / `playerVacuum` (checked before extracting; a grab that cannot be paid returns
+  `tired` and emits `player:tired`) and sprint (`PlayerController.update`, drains per frame while moving with Shift).
+  Automation never calls these. Not saved (a loaded game is rested). HUD: `.pn-stamina` bar above the hint line,
+  shown while spending or not full.
 - **Store kiosk** (`WORLD.store`, cells x=-32, z -1..0, reserved): a fixed prop next to the intake; E opens
   the Shop panel (B still works everywhere). Render: `src/render/marketIntakeView.ts` (belt tiles, bundles
   from `intakeLoads()`, drop highlight, SELL HAY / STORE signs); game layer aims at it with `rayBox`.

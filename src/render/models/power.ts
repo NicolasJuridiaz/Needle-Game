@@ -1,6 +1,7 @@
+import { strawMound } from './strawHeap';
 import type { ModelInstance } from './api';
 import { cachedTemplate } from './cache';
-import { C, hayMound, lampMast, namePlate, ports, skid, tierKit } from './kit';
+import { C, lampMast, namePlate, ports, skid, tierKit } from './kit';
 import { shade, type Parts } from './parts';
 import { af, ease, HIDDEN, RigModel, TemplateBuilder, type Template } from './rig';
 
@@ -81,7 +82,7 @@ function generatorTemplate(): Template {
     r.cyl('glowFire', 0.0, 0.07, h, 0xffffff, { pos: [x, 0.06 + h / 2, 0], scale: [1, 1, 0.12], bone: fire }, 6);
   }
   const fuel = t.bone(0, [GEN.fbX, 0.38, dz + 0.012]);
-  r.add('decal', hayMound(1, 1, 0.5, 5, 51), 0xffffff, { scale: [0.5, 0.3, 0.02], rot: [0, 0, 0], bone: fuel });
+  r.add('matte', strawMound(0.5, 51), null, { scale: [0.5, 0.3, 0.02], rot: [0, 0, 0], bone: fuel });
   const fly = t.bone(0, [0.36, 0.5, 1.05]);
   r.cyl('metal', 0.34, 0.34, 0.07, C.frame, { bone: fly }, 18, 'x');
   r.cyl('paint', 0.28, 0.28, 0.075, RED, { bone: fly }, 18, 'x');

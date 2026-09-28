@@ -1,6 +1,7 @@
+import { strawMound } from './strawHeap';
 import type { ModelInstance } from './api';
 import { cachedTemplate } from './cache';
-import { C, hayMound, hoseGeometry, HoseLayout, lampMast, namePlate, ports, skid, tierKit } from './kit';
+import { C, hoseGeometry, HoseLayout, lampMast, namePlate, ports, skid, tierKit } from './kit';
 import { shade, wedge, type V3 } from './parts';
 import { af, ease, HIDDEN, RigModel, TemplateBuilder, type Template } from './rig';
 
@@ -62,7 +63,7 @@ function hopperTemplate(): Template {
     r.bev('paint', [0.55, 0.05, 0.1], 0.015, C.factory, { pos: [Math.cos(a) * 0.3, 0.12 + k * 0.12, -Math.sin(a) * 0.3], rot: [0, a, 0.25], bone: agit });
   }
   const hay = t.bone(0, [0, HOP.baseTop + 0.1, 0]);
-  r.add('decal', hayMound(1, 1, 0.3, 6, 11), 0xffffff, { bone: hay });
+  r.add('matte', strawMound(0.3, 11), null, { bone: hay });
   t.cullRadius = 2; t.cullCentre = [0, 1.1, 0];
   return t.build();
 }
@@ -133,7 +134,7 @@ function rakeTemplate(): Template {
 
   const r = t.r;
   const tray = t.bone(0, [-0.15, 0.2, 0]);
-  r.add('decal', hayMound(1, 1, 0.35, 6, 21), 0xffffff, { bone: tray });
+  r.add('matte', strawMound(0.35, 21), null, { bone: tray });
   // rod: unit length along +X, scaled by the extension
   const rod = t.bone(0, [RK.barrelEnd, RK.barrelY, 0]);
   r.cyl('chrome', 0.065, 0.065, 1, C.steelLight, { pos: [0.5, 0, 0], bone: rod }, 10, 'x');
@@ -263,7 +264,7 @@ function armTemplate(): Template {
     r.bev('metal', [0.05, 0.3, 0.24], 0.015, C.steelLight, { pos: [s * 0.01, -0.14, 0], bone: b });
     r.bev('metal', [0.1, 0.05, 0.24], 0.015, C.steelLight, { pos: [-s * 0.04, -0.29, 0], rot: [0, 0, s * 0.35], bone: b });
   }
-  r.add('decal', hayMound(1, 1, 0.8, 5, 33, true), 0xffffff, { pos: [0, -0.12, 0], scale: [0.22, 0.3, 0.22], bone: hay });
+  r.add('matte', strawMound(0.8, 33), null, { pos: [0, -0.12, 0], scale: [0.22, 0.3, 0.22], bone: hay });
   r.sphere('matte', 0.1, C.hay, { bone: hay }, 7, 5);
   tierKit(t, 1, 1, { plateY: 0.3, postH: 0.6 });
   t.cullRadius = 5; t.cullCentre = [0, 1.5, 0];

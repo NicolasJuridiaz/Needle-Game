@@ -1,3 +1,4 @@
+import { pickupStaminaCost, STAMINA } from '../config/stamina';
 import { TOOLS } from '../config/tools';
 import { WORLD } from '../config/world';
 import type { DetectorReading, WheelbarrowState } from './interfaces';
@@ -21,6 +22,8 @@ export interface DigResult {
   needleFound: number;
   /** Hay units that went into the parked wheelbarrow. */
   toBarrow: number;
+  /** True when the action was refused because the player has not enough stamina. */
+  tired?: boolean;
 }
 
 /** Distance (m) in front of the player where a newly bought wheelbarrow appears. */
@@ -47,6 +50,17 @@ const DIG_KEYS = new Map<ToolId, DigStatKeys>(
 
 /** Sim time of the last `player:full` event, per simulation. */
 const lastFullEventAt = new WeakMap<Sim, number>();
+/** Sim time of the last `player:tired` event, per simulation. */
+const lastTiredEventAt = new WeakMap<Sim, number>();
+
+function notifyTired(sim: Sim): DigResult {
+  const last = lastTiredEventAt.get(sim);
+  if (last === undefined || sim.time - last >= FULL_EVENT_INTERVAL || sim.time < last) {
+    lastTiredEventAt.set(sim, sim.time);
+    sim.events.emit('player:tired', {});
+  }
+  return { ...noResult(), tired: true };
+}
 
 const noResult = (): DigResult => ({ amount: 0, full: false, needleFound: -1, toBarrow: 0 });
 
@@ -75,6 +89,8 @@ function overflowBarrow(sim: Sim): WheelbarrowState | null {
  */
 function extractToPlayer(
   sim: Sim, tool: ToolId, x: number, z: number, radius: number, maxUnits: number, source: 'manual' | 'vacuumTool',
+  /** Stamina price: 'grab' = pickupStaminaCost(units) paid per action; a number = drain per second over `dt`. */
+  effort: { grab: true } | { perSecond: number; dt: number },
 ): DigResult {
   const player = sim.player;
   const carryFree = Math.max(0, carryCapacity(sim) - player.carry.weight());
@@ -87,10 +103,20 @@ function extractToPlayer(
   }
   if (!(maxUnits > 0)) return noResult();
 
-  const ex = sim.hay.extractRadius(x, z, radius, Math.min(maxUnits, room));
+  // Physical effort: a grab needs the stamina for the hay it would take; suction needs some stamina left.
+  const stamina = player.stamina;
+  const want = Math.min(maxUnits, room);
+  if ('grab' in effort) {
+    if (stamina.value + 1e-9 < pickupStaminaCost(want)) return notifyTired(sim);
+  } else if (stamina.value <= 0) return notifyTired(sim);
+
+  const ex = sim.hay.extractRadius(x, z, radius, want);
   if (ex.units <= 0 && ex.needles.length === 0) return noResult();
 
   const units = Math.max(0, ex.units);
+  // Pay for what was really taken (a thin spot costs less than a full grab).
+  if ('grab' in effort) stamina.trySpend(Math.min(stamina.value, pickupStaminaCost(units)));
+  else stamina.drain(effort.perSecond, effort.dt);
   const toCarry = Math.min(units, carryFree);
   const toBarrow = barrow ? units - toCarry : 0;
   if (toCarry > 0) player.carry.add('hay', toCarry);
@@ -115,15 +141,16 @@ function extractToPlayer(
 export function playerDig(sim: Sim, tool: ToolId, x: number, _y: number, z: number): DigResult {
   const keys = DIG_KEYS.get(tool);
   if (!keys || !sim.progress.ownedTools.has(tool) || sim.player.cooldown > 0) return noResult();
-  const result = extractToPlayer(sim, tool, x, z, sim.stat(keys.radius), sim.stat(keys.dig), 'manual');
-  if (!result.full || result.amount > 0) sim.player.cooldown = sim.stat(keys.interval);
+  const result = extractToPlayer(sim, tool, x, z, sim.stat(keys.radius), sim.stat(keys.dig), 'manual', { grab: true });
+  if (!result.tired && (!result.full || result.amount > 0)) sim.player.cooldown = sim.stat(keys.interval);
   return result;
 }
 
 /** Continuous vacuum tool suction for dt seconds at the aimed point. */
 export function playerVacuum(sim: Sim, dt: number, x: number, _y: number, z: number): DigResult {
   if (!sim.progress.ownedTools.has('vacuum') || !(dt > 0)) return noResult();
-  return extractToPlayer(sim, 'vacuum', x, z, sim.stat('tool.vacuum.radius'), sim.stat('tool.vacuum.rate') * dt, 'vacuumTool');
+  return extractToPlayer(sim, 'vacuum', x, z, sim.stat('tool.vacuum.radius'), sim.stat('tool.vacuum.rate') * dt, 'vacuumTool',
+    { perSecond: STAMINA.vacuumPerSecond, dt });
 }
 
 /** Metal detector reading at the player's position (zero signal if the detector is not owned). */

@@ -114,7 +114,7 @@ describe('visual hay surface (render mapping of the sim heightfield)', () => {
       // ... and the sim has hay at that X/Z, so the existing extraction can take it
       expect(sim.hay.heightAt(hit.point!.x, hit.point!.z)).toBeGreaterThan(0);
       sim.progress.ownedTools.add('shovel');
-      sim.player.carry.clear(); sim.player.cooldown = 0;
+      sim.player.carry.clear(); sim.player.cooldown = 0; sim.player.stamina.reset(); // stamina is tested elsewhere
       if (playerDig(sim, 'shovel', hit.point!.x, hit.point!.y, hit.point!.z).amount > 0) dug++;
       const r = sim.hay.consumeDirtyRect();
       if (r) s.update(r.c0, r.r0, r.c1 + 1, r.r1 + 1);

@@ -3,10 +3,13 @@
  * Coordinate system: +X east, +Z south, +Y up. Grid cell (x, z) covers [x, x+1) × [z, z+1).
  */
 export const WORLD = {
-  /** Warehouse interior (main hall). */
-  interior: { minX: -32, maxX: 32, minZ: -22, maxZ: 22 },
+  /**
+   * Warehouse interior (main hall). Compact layout (was maxX 32): the east wall stands at x = 24, the pile sits 6 m
+   * further west (pile.cx) so the Market is ~6 m closer; the factory keeps the full z depth and a 13 m east strip.
+   */
+  interior: { minX: -32, maxX: 24, minZ: -22, maxZ: 22 },
   /** North annex, closed by a temporary wall until "Warehouse Expansion I" is unlocked. */
-  annex: { minX: -32, maxX: 32, minZ: 22, maxZ: 36 },
+  annex: { minX: -32, maxX: 24, minZ: 22, maxZ: 36 },
   wallHeight: 11,
   roofPeak: 16,
 
@@ -21,7 +24,12 @@ export const WORLD = {
 
   /** The haystack. Shape is an organic mound; units are normalised to `totalUnits`. */
   pile: {
-    cx: 5,
+    /**
+     * Centre (m). Compact layout: -1 (was 5), so the pile's west foot is ~14 m from the SELL HAY drop point (was ~21).
+     * -1 is the most the reference factory layout allows: trunk (rake, hopper, scanner, 2 splitters) between the
+     * pile foot and the chute, processing on a row north of it (tools/balance/bot.ts).
+     */
+    cx: -1,
     cz: 0,
     rx: 13,
     rz: 11,
@@ -38,8 +46,8 @@ export const WORLD = {
     reposeDeg: 40,
   },
 
-  /** Player spawn: west side, facing the pile (+X). yaw in radians, 0 = facing +X. */
-  spawn: { x: -19, z: 2, yaw: 0 },
+  /** Player spawn: between the Market and the pile, facing the pile (+X). yaw in radians, 0 = facing +X. */
+  spawn: { x: -21, z: 2, yaw: 0 },
 
   /** Fixed buildings placed at game start (cell = min corner, rot). */
   fixed: {

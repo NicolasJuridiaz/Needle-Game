@@ -39,6 +39,8 @@ export interface GameEvents {
   'player:deposit': { targetId: number; type: BuildingType | 'wheelbarrow'; amount: number; pos: Vec3 };
   'player:take': { sourceId: number; amount: number; pos: Vec3 };
   'player:full': Record<string, never>;
+  /** A manual action was refused for lack of stamina. */
+  'player:tired': Record<string, never>;
   'player:denied': { reason: string };
 
   // ----- Power

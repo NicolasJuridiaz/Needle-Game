@@ -21,9 +21,9 @@ const ANNEX_LOW = 8;
 /** Clear height of the hall → annex opening (under the header beam). */
 const ANNEX_OPENING = 9;
 /** Truss x positions (every 8 m). */
-const TRUSS_X = [-24, -16, -8, 0, 8, 16, 24];
+const TRUSS_X = [-24, -16, -8, 0, 8, 16].filter((x) => x > WORLD.interior.minX + 1 && x < WORLD.interior.maxX - 1);
 /** Pendant lamp fixtures (x, z); the first `lamps` (by quality) also carry a real point light. */
-const LAMPS: readonly [number, number][] = [[-8, 11], [8, -11], [-24, -11], [24, 11], [-8, -11], [8, 11], [-24, 11], [24, -11]];
+const LAMPS: readonly [number, number][] = [[-8, 11], [8, -11], [-24, -11], [16, 11], [-8, -11], [8, 11], [-24, 11], [16, -11]];
 const LAMP_Y = 8.3;
 /** Direction TOWARDS the sun (west, high, a little south). */
 const SUN_DIR = new THREE.Vector3(-0.64, 0.72, 0.27).normalize();

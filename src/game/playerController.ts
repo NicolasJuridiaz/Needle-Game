@@ -1,3 +1,4 @@
+import { STAMINA } from '../config/stamina';
 import { WORLD } from '../config/world';
 import { rotatedSize } from '../sim/grid';
 import type { Sim } from '../sim/sim';
@@ -78,7 +79,11 @@ export class PlayerController {
     }
     const len = Math.hypot(mx, mz);
     if (len > 0) { mx /= len; mz /= len; }
-    const sprint = input && (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) ? s.stat('player.sprintMul') : 1;
+    // Sprint costs stamina only while really running (Shift + moving); an empty bar drops back to walking.
+    const stamina = s.player.stamina;
+    const wantSprint = !!input && (input.isDown('ShiftLeft') || input.isDown('ShiftRight')) && len > 0 && speedMul > 0;
+    this.sprinting = wantSprint && stamina.canSprint() && stamina.drain(STAMINA.sprintPerSecond, dt) > 0 && stamina.canSprint();
+    const sprint = this.sprinting ? s.stat('player.sprintMul') : 1;
     const onHay = this.hayHeight(this.x, this.z) > this.y - 0.05 + HAY_SINK && this.onGround;
     const speed = s.stat('player.moveSpeed') * sprint * speedMul * (onHay ? HAY_SPEED_MUL : 1);
     const tx = mx * speed, tz = mz * speed;
@@ -214,6 +219,9 @@ export class PlayerController {
 
   /** Hay surface the player walks on: the visual pile when the game provides it (render mapping), else the sim's. */
   hayHeight: (x: number, z: number) => number = (x, z) => this.sim.hay.heightAt(x, z);
+
+  /** True while the player is running on stamina (HUD). */
+  sprinting = false;
 
   /** Highest walkable surface under (x,z) not above feetY + step height. */
   groundAt(x: number, z: number, feetY: number): number {

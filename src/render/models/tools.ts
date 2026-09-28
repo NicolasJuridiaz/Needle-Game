@@ -107,9 +107,8 @@ function orientGlove(o: THREE.Object3D, handle: [number, number, number], sleeve
 
 /** Carried hay: a straw mini-heap (same model family as the belt items) scaled to ~1 m wide; setLoad scales it. */
 function hayGeo(round = false): THREE.BufferGeometry {
-  const g = strawHeapGeometry(round ? 1 : 2);
-  g.scale(2.9, round ? 2.6 : 2.2, 2.9);
-  return g;
+  // Authored ~1 m wide (setLoad scales it to ~0.25 m): many long thin sticks, so the armful reads as loose straw.
+  return strawHeapGeometry(round ? 1 : 3, { radius: 0.5, height: round ? 0.62 : 0.5, sticks: 120, len: [0.34, 0.62], thick: [0.028, 0.05] });
 }
 
 abstract class BaseVM implements ToolViewModel {

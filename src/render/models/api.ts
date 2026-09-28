@@ -27,7 +27,7 @@ export interface ModelInstance {
 }
 
 export type PropKind = 'wheelbarrow' | 'needle' | 'orderBoard' | 'needleCase' | 'truck';
-export type ItemModelKind = 'item:hay' | 'item:hay1' | 'item:hay2' | 'item:bale' | 'item:wrapped' | 'item:wrappedPremium';
+export type ItemModelKind = 'item:hay' | 'item:hay1' | 'item:hay2' | 'item:hay3' | 'item:hay4' | 'item:bale' | 'item:wrapped' | 'item:wrappedPremium';
 
 export type ModelKind = BuildingType | PropKind;
 

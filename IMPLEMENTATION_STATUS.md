@@ -16,7 +16,7 @@ el código está listo y solo falta QA manual (playtest, FPS real, Preview). Ver
 | Check | Resultado |
 |---|---|
 | `npm run typecheck` | PASS (0 errores) |
-| `npm test` | PASS — 443/443 (23 ficheros; visual 1 +8 intake; P0 +27, P0.1 +13: consentimiento unknown/granted/denied, retirada, reactivación, configuración ausente) |
+| `npm test` | PASS — 465/465 (26 ficheros; stamina + manos + nave compacta +13; visual 1 +8 intake; P0 +27, P0.1 +13: consentimiento unknown/granted/denied, retirada, reactivación, configuración ausente) |
 | `npm run build` | PASS — `dist/` 1,32 MB, 5 ficheros (JS 1,18 MB / 339 KB gzip + chunk ByteBrew 25,7 KB / 9,3 KB gzip, pedido solo tras el consentimiento), rutas relativas |
 | `npm run balance:many -- --seeds 50` (pajar 750k) | 50/50 completan · P10 59,4 · mediana 64,7 · P90 68,9 · máx. 80,3 min · Vacuum Collector y Scanner MK2 usados en 100 % · 49/50 sin tramo > 4 min (1 en 4:18) |
 | Test de tamaño de pajar (50 semillas c/u) | 500k mediana 55,6 (Collector 58 %) · 650k mediana 61,9 · 750k mediana 64,7 → 750k elegido (docs/PLAYTEST_V1.md §2) |

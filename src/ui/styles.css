@@ -464,6 +464,20 @@
 .pn-cross.is-target .pn-cross-n { transform: translateY(-3px); } .pn-cross.is-target .pn-cross-s { transform: translateY(3px); }
 .pn-cross.is-target .pn-cross-e { transform: translateX(3px); } .pn-cross.is-target .pn-cross-w { transform: translateX(-3px); }
 
+/* ----- stamina (bottom centre, above the hotbar; hidden when full and idle) ----- */
+.pn-stamina {
+  position: absolute; left: 50%; bottom: calc(var(--u) * 10); transform: translate(-50%, 0.3em);
+  display: flex; align-items: center; gap: 0.5em; opacity: 0; pointer-events: none;
+  transition: opacity 0.35s, transform 0.25s var(--ease);
+}
+.pn-stamina.is-on { opacity: 1; transform: translate(-50%, 0); }
+.pn-stamina-label { font-size: calc(var(--u) * 0.62); font-weight: 900; letter-spacing: 0.14em; color: var(--ink-2); text-shadow: 0 1px 2px #000; }
+.pn-stamina-bar { width: calc(var(--u) * 11); height: 0.36em; }
+.pn-stamina .pn-bar-fill { background: linear-gradient(90deg, #7fbf5a, #b7e36f); transition: transform 0.12s linear; }
+.pn-stamina.is-low .pn-bar-fill { background: linear-gradient(90deg, #e0782f, #f2b24e); }
+.pn-stamina.is-bump { animation: pn-bump 0.4s var(--spring); }
+.pn-ui[data-mode='build'] .pn-stamina { display: none; }
+
 /* ----- carry meter ----- */
 .pn-carry {
   position: absolute;

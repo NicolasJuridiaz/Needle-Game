@@ -694,6 +694,7 @@ export class HayField implements IHayField {
     const q = new Uint16Array(this.heights.length);
     for (let i = 0; i < q.length; i++) q[i] = Math.min(65535, Math.round(this.heights[i] * 1000));
     return {
+      cols: this.cols,
       heights: toBase64(new Uint8Array(q.buffer)),
       blocked: toBase64(this.blocked),
       initialUnits: this.initialUnits,
@@ -706,12 +707,20 @@ export class HayField implements IHayField {
   deserialize(s: HaySave): void {
     const hb = fromBase64(s.heights);
     const q = new Uint16Array(hb.buffer, hb.byteOffset, Math.floor(hb.byteLength / 2));
-    const n = Math.min(q.length, this.heights.length);
-    this.heights.fill(0);
-    for (let i = 0; i < n; i++) this.heights[i] = q[i] / 1000;
     const bb = fromBase64(s.blocked);
+    // Saves before the compact layout have a wider grid (same origin, same rows): copy row by row.
+    const rows = this.rows;
+    const savedCols = s.cols ?? (q.length % rows === 0 ? q.length / rows : this.cols);
+    const cols = Math.min(savedCols, this.cols);
+    this.heights.fill(0);
     this.blocked.fill(0);
-    this.blocked.set(bb.subarray(0, this.blocked.length));
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const src = r * savedCols + c, dst = r * this.cols + c;
+        if (src < q.length) this.heights[dst] = q[src] / 1000;
+        if (src < bb.length) this.blocked[dst] = bb[src];
+      }
+    }
     this.initialUnits = s.initialUnits;
     let sum = 0;
     for (let i = 0; i < this.heights.length; i++) sum += this.heights[i];

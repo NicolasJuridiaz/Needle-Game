@@ -10,7 +10,7 @@ import { strawHeapGeometry } from './strawHeap';
  * Belt item geometries for instancing (one InstancedMesh per item type). Each geometry sits ON the belt:
  * base at y = 0, centred in X/Z, long axis along +X (travel direction). Attributes: position, normal,
  * uv (atlas solid blocks) and color, so it renders with paletteMaterial() or modelMaterial().
- *   item:hay, hay1, hay2  straw mini-heaps (3 shapes, ~0.34 × 0.24 × 0.32; see strawHeap.ts)
+ *   item:hay, hay1..hay4  straw mini-heaps made of sticks (5 shapes, ~0.4 m wide; see strawHeap.ts)
  *   item:bale           twine-bound bale (0.55 × 0.36 × 0.42)
  *   item:wrapped        white film-wrapped bale
  *   item:wrappedPremium wrapped bale with gold stripes
@@ -40,6 +40,8 @@ export function buildItemGeometry(kind: ItemModelKind): THREE.BufferGeometry {
     case 'item:hay': return strawHeapGeometry(0);
     case 'item:hay1': return strawHeapGeometry(1);
     case 'item:hay2': return strawHeapGeometry(2);
+    case 'item:hay3': return strawHeapGeometry(3);
+    case 'item:hay4': return strawHeapGeometry(4);
     case 'item:bale': return bale();
     case 'item:wrapped': return wrapped(false);
     case 'item:wrappedPremium': return wrapped(true);

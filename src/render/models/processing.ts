@@ -1,7 +1,8 @@
+import { strawMound } from './strawHeap';
 import { COLORS } from '../palette';
 import type { ModelInstance } from './api';
 import { cachedTemplate } from './cache';
-import { BH, C, hayMound, lampMast, namePlate, ports, skid, tierKit } from './kit';
+import { BH, C, lampMast, namePlate, ports, skid, tierKit } from './kit';
 import { shade, type Parts } from './parts';
 import { af, HIDDEN, RigModel, TemplateBuilder, type Template } from './rig';
 
@@ -75,7 +76,7 @@ function compressorTemplate(): Template {
 
   const r = t.r;
   const hh = t.bone(0, [-0.9, 1.0, 0]);
-  r.add('decal', hayMound(1, 1, 0.3, 6, 41), 0xffffff, { bone: hh });
+  r.add('matte', strawMound(0.3, 41), null, { bone: hh });
   const ram = (parent: number, z: number): [number, number] => {
     const rb = t.bone(parent, [CP.x, CP.ramTop, z]);
     r.cyl('chrome', 0.075, 0.075, 1.0, C.steelLight, { pos: [0, 0.5, 0], bone: rb }, 10);

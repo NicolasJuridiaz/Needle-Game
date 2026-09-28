@@ -157,6 +157,7 @@ export class Sim implements SimContext {
     this.tickCount++;
     this.progress.stats.playTime = this.time;
     this.player.cooldown = Math.max(0, this.player.cooldown - dt);
+    this.player.stamina.tick(dt);
 
     this.logistics.tick(dt);
     this.power.tick(dt);
@@ -460,6 +461,11 @@ export class Sim implements SimContext {
     sim.player.deserialize(data.player);
     sim.hay.deserialize(data.hay);
     for (const s of data.buildings) {
+      // A building left outside the (compact) warehouse by an older save is dropped and refunded.
+      if (occupiedCells(s.type, s.cell, s.rot, s.variant).some((c) => !isFloorCell(c.x, c.z, true))) {
+        if (s.paid > 0) sim.progress.addMoney(s.paid, 'refund');
+        continue;
+      }
       const b = sim.placeInternal(s.type, s.cell, s.rot, s.variant, s.paid, s.id);
       b.enabled = s.enabled;
       b.loadState(s.state);

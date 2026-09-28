@@ -1,7 +1,8 @@
+import { strawMound } from './strawHeap';
 import type { ModelInstance } from './api';
 import { cachedTemplate } from './cache';
 import { needleParts } from './detection';
-import { C, hayMound, namePlate } from './kit';
+import { C, namePlate } from './kit';
 import { shade } from './parts';
 import { baleParts } from './processing';
 import { af, ease, HIDDEN, RigModel, StaticModel, TemplateBuilder, type Template } from './rig';
@@ -42,7 +43,7 @@ function wheelbarrowTemplate(): Template {
   r.cyl('metal', 0.02, 0.02, 0.26, C.steelDark, { bone: body }, 6, 'z');
   // hay load
   const hay = t.bone(body, [-0.5, 0.12, 0]);
-  r.add('decal', hayMound(1, 1, 0.35, 6, 71), 0xffffff, { bone: hay });
+  r.add('matte', strawMound(0.35, 71), null, { bone: hay });
   t.cullRadius = 1.5; t.cullCentre = [-0.2, 0.4, 0];
   return t.build();
 }
