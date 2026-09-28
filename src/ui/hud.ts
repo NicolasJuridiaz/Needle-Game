@@ -11,8 +11,9 @@ const SLOW_DT = 0.1;
 const FLOATERS = 5;
 
 /**
- * In-world HUD: money/WP (count-up + floaters), needles, power, current order, crosshair,
- * carry meter, interaction prompt, denial messages, onboarding hint, FPS and save indicator.
+ * In-world HUD, laid out in zones: economy plate (top-left: money, WP once earned), goals column (top-right:
+ * needles, current order, power once a generator exists), crosshair + prompt + denial messages (centre), player
+ * strip (bottom centre: stamina, carried hay, wheelbarrow - each only while relevant), onboarding hint, FPS, save.
  * Hotbar, machine tooltip, detector and build HUD are separate parts sharing the same layer.
  */
 export class Hud implements UIPart {
@@ -25,6 +26,7 @@ export class Hud implements UIPart {
   private wp = { shown: 0, text: null as unknown as TextSlot };
   private readonly moneyChip: HTMLElement;
   private readonly wpChip: HTMLElement;
+  private readonly wpVisible: ClassSlot;
   private readonly floats: HTMLElement[] = [];
   private floatIdx = 0;
   /** Big "+$X" pop above the crosshair when a load dropped on the SELL HAY belt is sold. */
@@ -74,6 +76,7 @@ export class Hud implements UIPart {
   private staminaFill!: HTMLElement;
   private staminaVisible!: ClassSlot;
   private staminaLow!: ClassSlot;
+  private staminaText!: TextSlot;
   private staminaFrac = -1;
   private staminaShowT = 0;
   private lastStamina = -1;
@@ -108,14 +111,18 @@ export class Hud implements UIPart {
     this.visible = new ClassSlot(el, 'is-hidden');
 
     // ----- resources (top-left)
+    // one plate: small muted label over a heavier value; WP only appears once the player has earned some
     const res = h('div', 'pn-res', el);
-    this.moneyChip = h('div', 'pn-res-row pn-res-money', res);
-    this.moneyChip.innerHTML = `<span class="pn-res-ic">${icon('money')}</span>`;
-    this.money.text = new TextSlot(h('span', 'pn-res-val', this.moneyChip));
-    this.wpChip = h('div', 'pn-res-row pn-res-wp', res);
-    this.wpChip.innerHTML = `<span class="pn-res-ic">${icon('wp')}</span>`;
-    this.wp.text = new TextSlot(h('span', 'pn-res-val', this.wpChip));
-    h('span', 'pn-res-unit', this.wpChip, 'WP');
+    const resRow = (cls: string, ic: string, label: string): [HTMLElement, TextSlot] => {
+      const row = h('div', `pn-res-row ${cls}`, res);
+      row.innerHTML = `<span class="pn-res-ic">${icon(ic)}</span>`;
+      const body = h('div', 'pn-res-body', row);
+      h('span', 'pn-res-label', body, label);
+      return [row, new TextSlot(h('span', 'pn-res-val', body))];
+    };
+    [this.moneyChip, this.money.text] = resRow('pn-res-money', 'money', 'Money');
+    [this.wpChip, this.wp.text] = resRow('pn-res-wp', 'wp', 'Work Points');
+    this.wpVisible = new ClassSlot(this.wpChip, 'is-on');
     const floats = h('div', 'pn-floats', res);
     for (let i = 0; i < FLOATERS; i++) this.floats.push(h('span', 'pn-float', floats));
     this.saleNote = h('div', 'pn-sale-note', el);
@@ -125,37 +132,40 @@ export class Hud implements UIPart {
     this.money.text.set(fmtMoney(p.money));
     this.wp.text.set(fmtInt(Math.floor(p.wp)));
 
-    // ----- needles + power (top-right)
+    // ----- goals column (top-right): needles, current order, power (only once a generator exists)
     const tr = h('div', 'pn-tr', el);
     const nb = h('div', 'pn-needles', tr);
     const head = h('div', 'pn-needles-head', nb);
     head.innerHTML = `<span class="pn-needles-ic">${icon('needle')}</span><span class="pn-needles-label">Needles</span>`;
-    this.needleCount = new TextSlot(h('span', 'pn-needles-count', head));
+    const count = h('span', 'pn-needles-count', head);
+    this.needleCount = new TextSlot(h('span', '', count));
+    h('small', '', count, `/${NEEDLE_COUNT}`);
     const slots = h('div', 'pn-needle-slots', nb);
     for (let i = 0; i < NEEDLE_COUNT; i++) this.needleSlots.push(h('span', 'pn-needle-slot', slots));
 
-    this.powerBox = h('div', 'pn-power', tr);
-    this.powerVisible = new ClassSlot(this.powerBox, 'is-on');
-    this.powerOver = new ClassSlot(this.powerBox, 'is-over');
-    const ph = h('div', 'pn-power-head', this.powerBox);
-    ph.innerHTML = `<span class="pn-power-ic">${icon('power')}</span>`;
-    this.powerText = new TextSlot(h('span', 'pn-power-text', ph));
-    const track = h('div', 'pn-bar pn-power-bar', this.powerBox);
-    this.powerFill = h('i', 'pn-bar-fill', track);
-    this.powerWarn = new TextSlot(h('div', 'pn-power-warn', this.powerBox));
-
-    // ----- current order (top-centre)
-    this.orderBox = h('div', 'pn-order', el);
+    this.orderBox = h('div', 'pn-order', tr);
     this.orderVisible = new ClassSlot(this.orderBox, 'is-on');
-    this.orderBox.innerHTML = `<span class="pn-order-ic">${icon('order')}</span>`;
     const ob = h('div', 'pn-order-body', this.orderBox);
+    const ohead = h('div', 'pn-order-head', ob);
+    ohead.innerHTML = `<span class="pn-order-ic">${icon('order')}</span><span class="pn-order-label">Order</span>`;
+    this.orderMore = new TextSlot(h('span', 'pn-order-more', ohead));
+    ohead.insertAdjacentHTML('beforeend', keycapHTML('KeyO', (c) => ctx.keyLabel(c)));
     const ot = h('div', 'pn-order-top', ob);
     this.orderTitle = new TextSlot(h('span', 'pn-order-title', ot));
     this.orderNums = new TextSlot(h('span', 'pn-order-nums', ot));
     const otrack = h('div', 'pn-bar pn-order-bar', ob);
     this.orderFill = h('i', 'pn-bar-fill', otrack);
-    this.orderMore = new TextSlot(h('span', 'pn-order-more', this.orderBox));
-    this.orderBox.insertAdjacentHTML('beforeend', keycapHTML('KeyO', (c) => ctx.keyLabel(c)));
+
+    this.powerBox = h('div', 'pn-power', tr);
+    this.powerVisible = new ClassSlot(this.powerBox, 'is-on');
+    this.powerOver = new ClassSlot(this.powerBox, 'is-over');
+    const ph = h('div', 'pn-power-head', this.powerBox);
+    ph.innerHTML = `<span class="pn-power-ic">${icon('power')}</span><span class="pn-power-label">Power</span>`;
+    this.powerText = new TextSlot(h('span', 'pn-power-text', ph));
+    const track = h('div', 'pn-bar pn-power-bar', this.powerBox);
+    this.powerFill = h('i', 'pn-bar-fill', track);
+    this.powerWarn = new TextSlot(h('div', 'pn-power-warn', this.powerBox));
+
     this.orderBox.addEventListener('click', () => { env.sound('uiClick'); ctx.actions.setMode('orders'); });
 
     // ----- crosshair + carry + prompt (centre)
@@ -164,30 +174,37 @@ export class Hud implements UIPart {
     this.crossHay = new ClassSlot(cross, 'is-hay');
     this.crossTarget = new ClassSlot(cross, 'is-target');
 
-    this.staminaBox = h('div', 'pn-stamina', el);
-    this.staminaBox.innerHTML = '<span class="pn-stamina-label">STAMINA</span>';
-    this.staminaFill = h('i', 'pn-bar-fill', h('div', 'pn-bar pn-stamina-bar', this.staminaBox));
+    // ----- player strip (bottom centre, above the hotbar): stamina + carried hay + wheelbarrow, each only when relevant
+    const player = h('div', 'pn-player', el);
+    const meter = (cls: string, ic: string, label: string): { row: HTMLElement; top: HTMLElement; val: TextSlot; fill: HTMLElement } => {
+      const row = h('div', `pn-player-row ${cls}`, player);
+      row.innerHTML = `<span class="pn-player-ic">${icon(ic)}</span>`;
+      const body = h('div', 'pn-player-body', row);
+      const top = h('div', 'pn-player-top', body);
+      h('span', 'pn-player-label', top, label);
+      const val = new TextSlot(h('span', 'pn-player-val', top));
+      const fill = h('i', 'pn-bar-fill', h('div', 'pn-bar', body));
+      return { row, top, val, fill };
+    };
+    const st = meter('pn-stamina', 'boots', 'Stamina');
+    this.staminaBox = st.row;
+    this.staminaFill = st.fill;
+    this.staminaText = st.val;
     this.staminaVisible = new ClassSlot(this.staminaBox, 'is-on');
     this.staminaLow = new ClassSlot(this.staminaBox, 'is-low');
 
-    this.carryBox = h('div', 'pn-carry', el);
+    const ca = meter('pn-carry', 'hay', 'Hay');
+    this.carryBox = ca.row;
+    this.carryText = ca.val;
+    this.carryFill = ca.fill;
+    this.carryTag = new TextSlot(h('span', 'pn-carry-tag', ca.top));
     this.carryVisible = new ClassSlot(this.carryBox, 'is-on');
     this.carryFull = new ClassSlot(this.carryBox, 'is-full');
-    const cr = h('div', 'pn-carry-row', this.carryBox);
-    cr.innerHTML = `<span class="pn-carry-ic">${icon('hay')}</span>`;
-    const cb = h('div', 'pn-carry-body', cr);
-    const ctop = h('div', 'pn-carry-top', cb);
-    this.carryText = new TextSlot(h('span', 'pn-carry-text', ctop));
-    this.carryTag = new TextSlot(h('span', 'pn-carry-tag', ctop));
-    const ctrack = h('div', 'pn-bar pn-carry-bar', cb);
-    this.carryFill = h('i', 'pn-bar-fill', ctrack);
-    this.barrowRow = h('div', 'pn-carry-row pn-carry-barrow', this.carryBox);
+    const ba = meter('pn-barrow', 'wheelbarrow', 'Barrow');
+    this.barrowRow = ba.row;
+    this.barrowText = ba.val;
+    this.barrowFill = ba.fill;
     this.barrowVisible = new ClassSlot(this.barrowRow, 'is-on');
-    this.barrowRow.innerHTML = `<span class="pn-carry-ic">${icon('wheelbarrow')}</span>`;
-    const bb = h('div', 'pn-carry-body', this.barrowRow);
-    this.barrowText = new TextSlot(h('span', 'pn-carry-text', bb));
-    const btrack = h('div', 'pn-bar pn-carry-bar', bb);
-    this.barrowFill = h('i', 'pn-bar-fill', btrack);
 
     this.prompt = h('div', 'pn-prompt', el);
     this.promptVisible = new ClassSlot(this.prompt, 'is-on');
@@ -219,6 +236,7 @@ export class Hud implements UIPart {
     // ----- events
     env.listen('sale', (e) => {
       if (e.viaBelt || !(e.value > 0)) return;
+      replayClass(this.moneyChip, 'is-gain');
       this.floater(`+${fmtMoney(e.value)}`, 'money');
       // manual sales only happen when a load from the SELL HAY belt reaches the chute: make that moment readable
       this.saleNote.textContent = `+${fmtMoney(e.value)}`;
@@ -287,8 +305,11 @@ export class Hud implements UIPart {
     this.staminaVisible.set(mode === 'play' && (st.value < st.max - 0.5 || this.staminaShowT > 0));
     this.staminaLow.set(st.exhausted || st.fraction < 0.2);
     const sf = Math.round(st.fraction * 200) / 200;
-    if (sf !== this.staminaFrac) { this.staminaFrac = sf; this.staminaFill.style.transform = `scaleX(${sf})`; }
-
+    if (sf !== this.staminaFrac) {
+      this.staminaFrac = sf;
+      this.staminaFill.style.transform = `scaleX(${sf})`;
+      this.staminaText.set(`${Math.round(st.fraction * 100)}%`);
+    }
   }
 
   private slowUpdate(mode: GameMode): void {
@@ -297,6 +318,8 @@ export class Hud implements UIPart {
     const prog = sim.progress;
 
     if (prog.needlesFound.length !== this.needlesShown) this.refreshNeedles();
+    // progressive disclosure: Work Points only once the player has earned or spent some
+    this.wpVisible.set(prog.wp > 0 || prog.stats.wpEarned > 0 || prog.nodes.size > 0);
 
     // ----- power
     const supply = sim.power.totalSupply;
@@ -306,7 +329,7 @@ export class Hud implements UIPart {
     if (hasPower) {
       const over = demand > supply + 0.05;
       this.powerOver.set(over);
-      this.powerText.set(`${fmtInt(demand)} / ${fmtInt(supply)} P`);
+      this.powerText.set(`${fmtInt(demand)} / ${fmtInt(supply)}`);
       const f = supply > 0 ? Math.min(1, demand / supply) : 1;
       const q = Math.round(f * 200) / 200;
       if (q !== this.powerFrac) { this.powerFrac = q; this.powerFill.style.transform = `scaleX(${q})`; }
@@ -336,7 +359,7 @@ export class Hud implements UIPart {
     const held = !!barrow?.held;
     this.carryVisible.set(mode === 'play' && (w > 0.01 || held || this.fullFlash > 0));
     this.carryFull.set(full);
-    this.carryText.set(`${fmtInt(Math.floor(w + 1e-6))} / ${fmtInt(cap)}`);
+    this.carryText.set(`${fmtInt(Math.floor(w + 1e-6))}/${fmtInt(cap)}`);
     this.carryTag.set(full ? 'FULL' : '');
     const cf = Math.round(Math.min(1, w / cap) * 100) / 100;
     if (cf !== this.carryFrac) { this.carryFrac = cf; this.carryFill.style.transform = `scaleX(${cf})`; }
@@ -344,7 +367,7 @@ export class Hud implements UIPart {
     if (barrow && held) {
       const bcap = Math.max(1, sim.stat('wheelbarrow.capacity'));
       const bw = barrow.inv.weight();
-      this.barrowText.set(`${fmtInt(Math.floor(bw + 1e-6))} / ${fmtInt(bcap)}`);
+      this.barrowText.set(`${fmtInt(Math.floor(bw + 1e-6))}/${fmtInt(bcap)}`);
       const bf = Math.round(Math.min(1, bw / bcap) * 100) / 100;
       if (bf !== this.barrowFrac) { this.barrowFrac = bf; this.barrowFill.style.transform = `scaleX(${bf})`; }
     }
@@ -370,7 +393,7 @@ export class Hud implements UIPart {
   private refreshNeedles(): void {
     const found = this.env.ctx.sim.progress.needlesFound.length;
     this.needlesShown = found;
-    this.needleCount.set(`${found}/${NEEDLE_COUNT}`);
+    this.needleCount.set(`${found}`);
     for (let i = 0; i < this.needleSlots.length; i++) {
       const s = this.needleSlots[i];
       const on = i < found;
