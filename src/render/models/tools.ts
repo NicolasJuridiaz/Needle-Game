@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { COLORS, emissiveMaterial, glassMaterial } from '../palette';
 import type { ToolViewKind, ToolViewModel } from './api';
-import { C, hayMound } from './kit';
+import { C } from './kit';
 import { glowMaterial, modelMaterial } from './materials';
 import { flipFaces, Parts, shade } from './parts';
+import { strawHeapGeometry } from './strawHeap';
 
 /**
  * First-person tool viewmodels. The root is added to the camera (camera space: +X right, +Y up, -Z
@@ -104,10 +105,10 @@ function orientGlove(o: THREE.Object3D, handle: [number, number, number], sleeve
   o.quaternion.setFromRotationMatrix(_gm);
 }
 
-/** Carried hay: a coarse faceted mound (flat normals), same flat straw look as the low-poly pile. */
+/** Carried hay: a straw mini-heap (same model family as the belt items) scaled to ~1 m wide; setLoad scales it. */
 function hayGeo(round = false): THREE.BufferGeometry {
-  const g = hayMound(1, 1, 0.55, 4, 91, round).toNonIndexed();
-  g.computeVertexNormals();
+  const g = strawHeapGeometry(round ? 1 : 2);
+  g.scale(2.9, round ? 2.6 : 2.2, 2.9);
   return g;
 }
 
@@ -161,8 +162,7 @@ class HandsVM extends BaseVM {
       this.hands.push(g);
     }
     const hp = new Parts();
-    hp.add('matte', hayGeo(true), C.hay);
-    hp.sphere('matte', 0.35, shade(C.hay, 0.9), { pos: [0, 0.05, 0], scale: [1, 0.5, 1] }, 7, 4);
+    hp.add('matte', hayGeo(true), null);
     this.hay = this.kit.mesh(hp, this.sway, 'hay');
   }
   protected animate(dt: number, time: number, s: State): void {
@@ -234,7 +234,7 @@ class LongToolVM extends BaseVM {
     orientGlove(left, [0, 0, -1], [-0.8, -0.5, 0.1]);
     this.kit.mesh(p, this.tool, kind);
     const hp = new Parts();
-    hp.add('matte', hayGeo(), C.hay);
+    hp.add('matte', hayGeo(), null);
     const hay = this.kit.mesh(hp, this.tool, 'hay');
     hay.position.set(0, 0.0, tip - 0.22);
     this.hay = hay;
@@ -275,7 +275,7 @@ class BucketVM extends BaseVM {
     g.position.set(0, H + rT + 0.01, 0);
     orientGlove(g, [1, 0, 0], [0.15, -0.35, 1]);
     const hp = new Parts();
-    hp.add('matte', hayGeo(true), C.hay);
+    hp.add('matte', hayGeo(true), null);
     const hay = this.kit.mesh(hp, this.bucket, 'hay');
     hay.position.set(0, H * 0.72, 0);
     this.hay = hay;

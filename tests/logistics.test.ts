@@ -618,3 +618,48 @@ describe('logistics: belt planner', () => {
     expect(out.hay).toBeGreaterThan(200);
   });
 });
+
+describe('logistics: floor → ramp up → elevated → ramp down → floor, and a 2-way splitter', () => {
+  it('hay climbs a ramp, runs on the elevated belt, comes back down and arrives intact', () => {
+    const sim = newSim();
+    unlockFirst(sim, ['l_lift']);
+    source(sim, -30, Z, 0);
+    place(sim, 'conveyor', -29, Z, 0);
+    place(sim, 'conveyorRamp', -28, Z, 0, 'up'); // -28..-26, out at level 1
+    for (let x = -25; x <= -22; x++) place(sim, 'conveyor', x, Z, 0, undefined, 1);
+    place(sim, 'conveyorRamp', -21, Z, 0, 'down'); // -21..-19, out at level 0
+    place(sim, 'conveyor', -18, Z, 0);
+    const out = sink(sim, -17, Z);
+    let sloped = 0, high = 0;
+    for (let k = 0; k < 60; k++) {
+      run(sim, 0.5);
+      sim.logistics.forEachItem(1, (v) => {
+        if (v.y > 0.8 && v.y < 2.6) sloped++;
+        if (v.y > 2.8) high++;
+      });
+    }
+    expect(out.hay / 30).toBeGreaterThan(35); // the whole line keeps flowing
+    expect(sloped).toBeGreaterThan(0); // items were seen on the slopes (moving between heights, not teleported)
+    expect(high).toBeGreaterThan(0); // and on the elevated section
+  });
+
+  it('a splitter with two outputs sends the hay about 50/50 and both branches keep flowing', () => {
+    const sim = newSim();
+    unlockFirst(sim, ['l_splitter']);
+    source(sim, -27, Z, 0);
+    beltX(sim, -26, -25, Z);
+    place(sim, 'splitter', -24, Z, 0);
+    place(sim, 'conveyor', -24, Z - 1, 3);
+    place(sim, 'conveyor', -24, Z - 2, 3);
+    const left = sink(sim, -24, Z - 3);
+    place(sim, 'conveyor', -24, Z + 1, 1);
+    place(sim, 'conveyor', -24, Z + 2, 1);
+    const right = sink(sim, -24, Z + 3);
+    sim.rebuildTopology();
+    run(sim, 40);
+    const total = left.hay + right.hay;
+    expect(total / 40).toBeGreaterThan(35);
+    expect(left.hay / total).toBeGreaterThan(0.45);
+    expect(left.hay / total).toBeLessThan(0.55);
+  });
+});

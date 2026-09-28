@@ -18,6 +18,8 @@ const _up = new THREE.Vector3(0, 1, 0);
 const TILE_KINDS: readonly ConveyorGeometryKind[] = ['straight', 'curveL', 'curveR', 'ramp', 'rampDown', 'legs'];
 const ITEM_KINDS: readonly ItemType[] = ['hay', 'bale', 'wrapped'];
 const ITEM_MODEL: Record<ItemType, ItemModelKind> = { hay: 'item:hay', bale: 'item:bale', wrapped: 'item:wrapped' };
+/** Hay rides the belts as mini-heaps in several shapes (picked per item id), so a belt never shows clones. */
+const HAY_VARIANTS: readonly ItemModelKind[] = ['item:hay', 'item:hay1', 'item:hay2'];
 const ITEM_COLOR: Record<ItemType, number> = { hay: COLORS.hay, bale: COLORS.hayDark, wrapped: COLORS.wrapFilm };
 /** Belt texture repeats per metre of belt (UV v assumed to run 0..1 per metre along the belt). */
 const BELT_REPEAT_PER_M = 1;
@@ -34,6 +36,7 @@ interface TileLayer {
 
 interface ItemLayer {
   type: ItemType;
+  key: string;
   geo: THREE.BufferGeometry;
   mesh: THREE.InstancedMesh;
   capacity: number;
@@ -60,7 +63,7 @@ export class BeltView {
   private readonly beltMap: THREE.Texture;
   private readonly beltMaterial: THREE.MeshStandardMaterial;
   private readonly tiles = new Map<ConveyorGeometryKind, TileLayer>();
-  private readonly items = new Map<ItemType, ItemLayer>();
+  private readonly items = new Map<string, ItemLayer>();
   private buildings: Map<number, Building> | null = null;
   /** Conveyors and the curve value their tile was built with (auto-curve change detection). */
   private conveyors: Building[] = [];
@@ -92,15 +95,19 @@ export class BeltView {
       this.tiles.set(kind, { kind, frameGeo: g.frame, beltGeo, frame: null, belt: null, capacity: 0, count: 0 });
     }
     for (const type of ITEM_KINDS) {
-      const geo = createItemGeometry(ITEM_MODEL[type]);
-      if (!geo.getAttribute('color')) paintGeometry(geo, ITEM_COLOR[type]);
-      const layer: ItemLayer = { type, geo, mesh: this.makeItemMesh(geo, 256, type), capacity: 256, count: 0, overflow: false };
-      this.items.set(type, layer);
+      const models = type === 'hay' ? HAY_VARIANTS : [ITEM_MODEL[type]];
+      models.forEach((model, k) => {
+        const geo = createItemGeometry(model);
+        if (!geo.getAttribute('color')) paintGeometry(geo, ITEM_COLOR[type]);
+        const key = type === 'hay' ? `hay${k}` : type;
+        const layer: ItemLayer = { type, key, geo, mesh: this.makeItemMesh(geo, 256, key), capacity: 256, count: 0, overflow: false };
+        this.items.set(key, layer);
+      });
     }
     scene.add(this.root);
   }
 
-  private makeItemMesh(geo: THREE.BufferGeometry, cap: number, type: ItemType): THREE.InstancedMesh {
+  private makeItemMesh(geo: THREE.BufferGeometry, cap: number, type: string): THREE.InstancedMesh {
     const m = new THREE.InstancedMesh(geo, paletteMaterial(), cap);
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     m.count = 0;
@@ -145,7 +152,7 @@ export class BeltView {
       const k = this.tileKindOf(b);
       if (!k) continue;
       need.set(k, (need.get(k) ?? 0) + 1);
-      if (b.type === 'conveyor' && b.cell.level === 1 && !platforms.has(b.cell.x * 4096 + b.cell.z)) need.set('legs', (need.get('legs') ?? 0) + 1);
+      if (b.type === 'conveyor' && b.cell.level === 1 && !platforms.has(b.cell.x * 4096 + b.cell.z) && ((b.cell.x + b.cell.z) & 1) === 0) need.set('legs', (need.get('legs') ?? 0) + 1);
     }
     for (const [k, n] of need) this.ensureTileCapacity(this.tiles.get(k)!, n);
 
@@ -158,8 +165,9 @@ export class BeltView {
       _p.set(c.x, c.y, c.z);
       _m.compose(_p, _q, _s);
       this.pushTile(this.tiles.get(k)!, _m);
-      if (b.type === 'conveyor' && b.cell.level === 1 && !platforms.has(b.cell.x * 4096 + b.cell.z)) {
-        // Legs stand on the ground floor and reach up to the elevated belt (authored from y = 0).
+      if (b.type === 'conveyor' && b.cell.level === 1 && !platforms.has(b.cell.x * 4096 + b.cell.z) && ((b.cell.x + b.cell.z) & 1) === 0) {
+        // Legs stand on the ground floor and reach up to the elevated belt (authored from y = 0); one trestle every
+        // other tile (checkerboard parity), like the widely spaced posts of the reference belts.
         _p.set(c.x, 0, c.z);
         _m.compose(_p, _q, _s);
         this.pushTile(this.tiles.get('legs')!, _m);
@@ -221,7 +229,7 @@ export class BeltView {
         this.root.remove(layer.mesh);
         layer.mesh.dispose();
         layer.capacity *= 2;
-        layer.mesh = this.makeItemMesh(layer.geo, layer.capacity, layer.type);
+        layer.mesh = this.makeItemMesh(layer.geo, layer.capacity, layer.key);
         layer.overflow = false;
       }
       layer.count = 0;
@@ -234,7 +242,7 @@ export class BeltView {
   }
 
   private readonly onItem = (v: BeltItemView): void => {
-    const layer = this.items.get(v.type);
+    const layer = this.items.get(v.type === 'hay' ? `hay${Math.floor(hash01(v.uid * 7 + 3) * HAY_VARIANTS.length) % HAY_VARIANTS.length}` : v.type);
     if (!layer) return;
     if (layer.count >= layer.capacity) { layer.overflow = true; return; }
     let yaw = v.yaw;

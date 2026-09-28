@@ -4,7 +4,7 @@ import { portDefsOf } from '../../sim/grid';
 import type { BuildingType, PortDef } from '../../sim/types';
 import type { ModelInstance } from './api';
 import { cachedGeometry, cachedTemplate } from './cache';
-import { buildConveyorGeometry, rampBeltY, type ConveyorGeometryKind } from './conveyor';
+import { RAIL, buildConveyorGeometry, rampBeltY, type ConveyorGeometryKind } from './conveyor';
 import { BH, C, LEVEL_H, namePlate, portFace } from './kit';
 import { beltMaterial, modelMaterial } from './materials';
 import { shade, type Parts, type V3 } from './parts';
@@ -16,8 +16,9 @@ import { af, ease, HIDDEN, RigModel, TemplateBuilder, type Template } from './ri
  * no-op), except the splitter's mode display which lights up.
  */
 
-const BLUE = C.logistics;
-const BLUE_DK = shade(C.logistics, 0.62);
+/** Logistics pieces share the belts' galvanised steel (reference: plain industrial belts, no painted housings). */
+const BLUE = RAIL;
+const BLUE_DK = shade(RAIL, 0.62);
 const BELT = 0x262626;
 
 // ---------------------------------------------------------------------------------------------
@@ -42,16 +43,17 @@ export function beltStub(p: Parts, w: number, d: number, pd: PortDef, len: numbe
   const along = f.nx !== 0;
   const sz = (a: number, b: number, h: number): V3 => (along ? [a, h, b] : [b, h, a]);
   p.box('matte', sz(len, 0.8, 0.03), BELT, { pos: [cx, y + BH - 0.015, cz], bone });
-  p.box('matte', sz(len, 0.84, 0.12), 0x2b2f33, { pos: [cx, y + BH - 0.09, cz], bone });
+  p.box('matte', sz(len, 0.8, 0.1), 0x1c1d1f, { pos: [cx, y + BH - 0.08, cz], bone });
   for (const s of [-1, 1]) {
-    const ox = along ? 0 : s * 0.44, oz = along ? s * 0.44 : 0;
-    p.box('paint', sz(len, 0.07, 0.25), BLUE, { pos: [cx + ox, y + BH - 0.07, cz + oz], bone });
+    const ox = along ? 0 : s * 0.435, oz = along ? s * 0.435 : 0;
+    // thin flared side plate (tilted outwards like the belts' trough sides)
+    p.box('metal', sz(len, 0.012, 0.13), BLUE, { pos: [cx + ox, y + BH + 0.04, cz + oz], rot: along ? [s * 0.55, 0, 0] : [0, 0, -s * 0.55], bone });
+    p.box('metal', sz(len, 0.05, 0.12), BLUE_DK, { pos: [cx + (along ? 0 : s * 0.39), y + BH - 0.07, cz + (along ? s * 0.39 : 0)], bone });
   }
   if (y === 0) {
-    // posts under the stub rails
     for (const s of [-1, 1]) {
-      const ox = along ? 0 : s * 0.44, oz = along ? s * 0.44 : 0;
-      p.box('metal', [0.05, BH - 0.2, 0.05], C.frame, { pos: [cx + ox, (BH - 0.2) / 2, cz + oz], bone });
+      const ox = along ? 0 : s * 0.4, oz = along ? s * 0.4 : 0;
+      p.box('metal', [0.045, BH - 0.13, 0.045], 0x2a2c2f, { pos: [cx + ox, (BH - 0.13) / 2, cz + oz], bone });
     }
   }
   const flow: V3 = pd.kind === 'in' ? [-f.nx, 0, -f.nz] : [f.nx, 0, f.nz];
@@ -131,12 +133,11 @@ function rampTemplate(down: boolean): Template {
   const p = t.s;
   // UP / DOWN plates on the rails (aligned with the slope) and hazard bands at the elevated end
   const slopeAt = (x: number): number => Math.atan2(rampBeltY(x + 0.05, down) - rampBeltY(x - 0.05, down), 0.1);
+  // small UP / DOWN tags on the channel under the belt edge (the reference belts carry no big plates)
   for (const s of [-1, 1]) {
-    for (const x of [-0.45, 0.45]) {
-      const a = slopeAt(x);
-      p.decal(down ? 'down' : 'up', 0.32, 0.16, { pos: [x, rampBeltY(x, down) - 0.08, s * 0.477], normal: [0, 0, s], up: [-Math.sin(a), Math.cos(a), 0] });
-    }
-    p.hazard(0.3, 0.1, { pos: [down ? -1.33 : 1.33, LEVEL_H + BH - 0.08, s * 0.477], normal: [0, 0, s] });
+    const x = 0;
+    const a = slopeAt(x);
+    p.decal(down ? 'down' : 'up', 0.22, 0.09, { pos: [x, rampBeltY(x, down) - 0.07, s * 0.422], normal: [0, 0, s], up: [-Math.sin(a), Math.cos(a), 0] });
   }
   t.cullRadius = 2.6; t.cullCentre = [0, 1.4, 0];
   return t.build();
@@ -169,38 +170,58 @@ const FILTER_COLORS = [C.hay, C.hayDark, C.white];
 interface HubBones { vane?: number; flash: number; modes: number[]; filters: number[] }
 const HUB_BONES = new Map<string, HubBones>();
 
+/**
+ * Open belt junction (splitter / merger): one continuous black belt pad with the port belts running into it and
+ * rounded steel corner posts between the ports, so it reads as the belt itself forking (reference) rather than a
+ * box. Items stay visible the whole way through.
+ */
+function openJunction(p: Parts): void {
+  p.box('matte', [0.84, 0.03, 0.84], BELT, { pos: [0, BH - 0.015, 0] });
+  p.box('matte', [0.8, 0.1, 0.8], 0x1c1d1f, { pos: [0, BH - 0.08, 0] });
+  for (const ax of [-1, 1]) for (const az of [-1, 1]) {
+    // rounded steel corner: short arc of plates around the corner, the flared rails of two ports meet here
+    const r = 0.13;
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 4) * (Math.PI / 2);
+      p.box('metal', [0.04, 0.12, 0.04], BLUE, { pos: [ax * (0.5 - r * Math.sin(a)), BH + 0.04, az * (0.5 - r * Math.cos(a))] });
+    }
+    p.box('metal', [0.05, BH - 0.13, 0.05], 0x2a2c2f, { pos: [ax * 0.42, (BH - 0.13) / 2, az * 0.42] });
+  }
+}
+
 function splitterTemplate(kind: 'splitter' | 'merger'): Template {
   const t = new TemplateBuilder();
   const p = t.s;
-  hub(p, 0.66, 0.66);
+  openJunction(p);
   stubs(p, kind, undefined, 0.17);
   const bones: HubBones = { flash: 0, modes: [], filters: [] };
   const r = t.r;
   if (kind === 'splitter') {
-    // mode display window on the hood
-    p.box('matte', [0.4, 0.012, 0.4], 0x0e1112, { pos: [0, 0.905, 0] });
+    // small mode display on a post at the back-left corner (the fork itself stays open)
+    p.box('metal', [0.04, 0.42, 0.04], 0x2a2c2f, { pos: [-0.44, BH + 0.21, -0.44] });
+    p.box('matte', [0.22, 0.012, 0.22], 0x0e1112, { pos: [-0.44, BH + 0.426, -0.44] });
     for (let m = 0; m < MODE_REGIONS.length; m++) {
-      const b = t.bone(0, [0, 0.913, 0]);
-      r.decal(MODE_REGIONS[m], 0.34, 0.34, { normal: [0, 1, 0], up: [1, 0, 0], bone: b });
+      const b = t.bone(0, [-0.44, BH + 0.434, -0.44]);
+      r.decal(MODE_REGIONS[m], 0.19, 0.19, { normal: [0, 1, 0], up: [1, 0, 0], bone: b });
       bones.modes.push(b);
     }
     for (let k = 0; k < 3; k++) {
-      const b = t.bone(0, [0.24, 0.905, 0.24]);
-      r.bev('paint', [0.09, 0.07, 0.09], 0.015, FILTER_COLORS[k], { pos: [0, 0.035, 0], bone: b });
+      const b = t.bone(0, [-0.34, BH + 0.43, -0.34]);
+      r.bev('paint', [0.06, 0.05, 0.06], 0.01, FILTER_COLORS[k], { pos: [0, 0.025, 0], bone: b });
       bones.filters.push(b);
     }
-    // diverter vane (pivot at the back)
-    const v = t.bone(0, [-0.27, BH, 0]);
-    r.bev('paint', [0.42, 0.24, 0.035], 0.01, C.factory, { pos: [0.21, 0.13, 0], bone: v });
-    r.cyl('metal', 0.03, 0.03, 0.3, C.steelLight, { pos: [0, 0.15, 0], bone: v }, 8);
+    // low diverter flap (pivot at the back), swings to the side it just served
+    const v = t.bone(0, [-0.3, BH, 0]);
+    r.bev('metal', [0.3, 0.08, 0.02], 0.006, BLUE, { pos: [0.15, 0.04, 0], bone: v });
+    r.cyl('metal', 0.02, 0.02, 0.1, BLUE_DK, { pos: [0, 0.05, 0], bone: v }, 8);
     bones.vane = v;
-    bones.flash = flashLight(t, [-0.25, 0.9, -0.25]);
+    bones.flash = flashLight(t, [-0.44, BH + 0.44, -0.3]);
   } else {
-    p.decal('arrow', 0.34, 0.34, { pos: [0, 0.902, 0], normal: [0, 1, 0], up: [1, 0, 0] }, 0x9dff8a);
-    bones.flash = flashLight(t, [-0.25, 0.9, -0.25]);
-    // merge paddle wheel under the hood (spins while items pass)
-    const v = t.bone(0, [0.05, BH + 0.2, 0]);
-    for (let k = 0; k < 3; k++) r.bev('paint', [0.05, 0.3, 0.02], 0.008, C.factory, { rot: [0, (k * Math.PI) / 3, 0], bone: v });
+    p.box('metal', [0.04, 0.42, 0.04], 0x2a2c2f, { pos: [-0.44, BH + 0.21, -0.44] });
+    bones.flash = flashLight(t, [-0.44, BH + 0.44, -0.44]);
+    // small spinning guide roller at the outlet (turns while items pass)
+    const v = t.bone(0, [0.3, BH + 0.05, 0]);
+    for (let k = 0; k < 3; k++) r.bev('metal', [0.03, 0.08, 0.02], 0.006, BLUE, { rot: [0, (k * Math.PI) / 3, 0], bone: v });
     bones.vane = v;
   }
   HUB_BONES.set(kind, bones);

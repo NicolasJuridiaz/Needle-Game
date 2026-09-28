@@ -10,7 +10,7 @@ import { TOOLS, WHEELBARROW } from '../config/tools';
 import type { EventBus } from '../core/events';
 import type { Building } from './building';
 import type { IProgression, OrderRuntime, ProgressSave, RunStats, SimContext, UnlockCheck } from './interfaces';
-import { TOOL_ORDER, type BuildingType, type Effect, type ItemType, type MachineStatus, type ToolId, type Vec3 } from './types';
+import { isSellable, TOOL_ORDER, type BuildingType, type Effect, type ItemType, type MachineStatus, type ToolId, type Vec3 } from './types';
 
 /**
  * Progression: money, Work Points, stats (base + Work Tree + needle buffs), shop rules, orders,
@@ -315,7 +315,7 @@ export class Progression implements IProgression {
 
   recordSale(item: ItemType, amount: number, viaBelt: boolean, pos: Vec3): number {
     const def = ITEMS[item];
-    if (!def || !(amount > 0) || !Number.isFinite(amount)) return 0;
+    if (!isSellable(item) || !def || !(amount > 0) || !Number.isFinite(amount)) return 0; // hay products only
     const value = amount * this.stat(def.valueStat) * this.stat('econ.hayMul') * this.stat('econ.saleMul');
     const hayEq = amount * BALANCE.hayEquivalent[item];
     const st = this.stats;

@@ -11,7 +11,7 @@ import { Parts, shade } from './parts';
  *   curveR    fed from the local RIGHT (+Z) edge, exits +X  (anim.curve = +1): quarter arc around (+0.5, +0.5)
  *   ramp      3 cells, x ∈ [-1.5, 1.5], rises one level (belt at BH at -X, LEVEL_H + BH at +X)
  *   rampDown  3 cells, falls one level (belt at LEVEL_H + BH at -X, BH at +X)
- *   legs      support legs for a level-1 tile: from -LEVEL_H (floor below) up to the frame (belt = empty)
+ *   legs      support legs for a level-1 tile, authored from the ground floor (y = 0) up to the frame (belt = empty)
  * Belt surface sits exactly at WORLD.beltHeight. Belt UVs: u = 0..1 across the belt (left→right of travel),
  * v = distance along the path in TILES (straight 0..1, curves 0..π/4, ramps 0..3) and increases in the
  * travel direction, so scrolling the texture by `time × belt.speed` matches item speed. The frame carries
@@ -21,10 +21,11 @@ import { Parts, shade } from './parts';
 export type ConveyorGeometryKind = 'straight' | 'curveL' | 'curveR' | 'ramp' | 'rampDown' | 'legs';
 
 const HALF_W = 0.4;
-const RAIL = C.logistics;
-const RAIL_DK = shade(C.logistics, 0.62);
-const BED = 0x2b2f33;
-const LEG = C.frame;
+/** Galvanised steel side plates, darker channel under the belt, thin dark posts (reference: industrial trough belt). */
+export const RAIL = 0xb3babf;
+const RAIL_DK = shade(0xb3babf, 0.66);
+const BED = 0x1c1d1f;
+const LEG = 0x2a2c2f;
 
 interface Sample { p: THREE.Vector3; t: THREE.Vector3; l: THREE.Vector3; u: THREE.Vector3; v: number }
 
@@ -185,42 +186,46 @@ function profCentre(prof: readonly (readonly [number, number])[]): [number, numb
 
 const box2 = (l0: number, l1: number, u0: number, u1: number): [number, number][] => [[l0, u0], [l1, u0], [l1, u1], [l0, u1]];
 
-/** Frame parts common to every belt path: side rails with a lip, the bed under the belt and edge trims. */
+/**
+ * Frame parts common to every belt path: a thin steel side plate on each side that flares outwards above the belt
+ * (trough), a narrow channel under the belt edge, and the dark bed under the belt.
+ */
 function frameAlong(p: Parts, s: Sample[]): void {
   for (const side of [-1, 1]) {
-    const l0 = side * (HALF_W + 0.005), l1 = side * (HALF_W + 0.075);
-    p.add('paint', sweep(s, box2(Math.min(l0, l1), Math.max(l0, l1), -0.2, 0.055)), RAIL);
-    // dark inner lip strip (reads as the channel's return)
-    const i0 = side * (HALF_W - 0.02), i1 = side * (HALF_W + 0.006);
-    p.add('metal', sweep(s, box2(Math.min(i0, i1), Math.max(i0, i1), 0.035, 0.055)), RAIL_DK);
+    // flared side plate: from the belt edge up and out (thin, 1.2 cm)
+    const plate: [number, number][] = side > 0
+      ? [[HALF_W - 0.012, -0.01], [HALF_W + 0.002, -0.01], [HALF_W + 0.07, 0.1], [HALF_W + 0.056, 0.1]]
+      : [[-HALF_W - 0.002, -0.01], [-HALF_W + 0.012, -0.01], [-HALF_W - 0.056, 0.1], [-HALF_W - 0.07, 0.1]];
+    p.add('metal', sweep(s, side > 0 ? plate : [plate[0], plate[3], plate[2], plate[1]]), RAIL);
+    // edge channel under the belt
+    const l0 = side * (HALF_W - 0.03), l1 = side * (HALF_W + 0.02);
+    p.add('metal', sweep(s, box2(Math.min(l0, l1), Math.max(l0, l1), -0.13, -0.008)), RAIL_DK);
   }
-  p.add('matte', sweep(s, box2(-HALF_W, HALF_W, -0.14, -0.012)), BED);
+  p.add('matte', sweep(s, box2(-HALF_W + 0.02, HALF_W - 0.02, -0.11, -0.012)), BED);
 }
 
+/** Thin dark posts under a belt (one each side) with a cross beam under the frame. */
 function legPair(p: Parts, x: number, z: number, lat: [number, number], yTop: number, yBot = 0): void {
   const [lx, lz] = lat;
   for (const s of [-1, 1]) {
-    const px = x + lx * s * 0.36, pz = z + lz * s * 0.36;
-    p.box('metal', [0.06, yTop - yBot, 0.06], LEG, { pos: [px, (yTop + yBot) / 2, pz] });
-    p.box('matte', [0.14, 0.03, 0.14], C.black, { pos: [px, yBot + 0.015, pz] });
+    const px = x + lx * s * 0.4, pz = z + lz * s * 0.4;
+    p.box('metal', [0.045, yTop - yBot, 0.045], LEG, { pos: [px, (yTop + yBot) / 2, pz] });
+    p.box('matte', [0.1, 0.02, 0.1], C.black, { pos: [px, yBot + 0.01, pz] });
   }
-  p.rod('metal', [x - lx * 0.4, yTop - 0.03, z - lz * 0.4], [x + lx * 0.4, yTop - 0.03, z + lz * 0.4], 0.03, LEG, 4);
-  p.rod('metal', [x - lx * 0.36, 0.08, z - lz * 0.36], [x + lx * 0.36, yTop - 0.08, z + lz * 0.36], 0.014, LEG, 4);
+  p.rod('metal', [x - lx * 0.42, yTop - 0.02, z - lz * 0.42], [x + lx * 0.42, yTop - 0.02, z + lz * 0.42], 0.022, LEG, 4);
 }
 
 function buildFrame(kind: ConveyorGeometryKind): THREE.BufferGeometry {
   const p = new Parts();
   if (kind === 'legs') {
-    const y0 = -LEVEL_H, y1 = BH - 0.2;
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      p.box('metal', [0.07, y1 - y0, 0.07], LEG, { pos: [sx * 0.3, (y0 + y1) / 2, sz * 0.4] });
-      p.box('matte', [0.16, 0.03, 0.16], C.black, { pos: [sx * 0.3, y0 + 0.015, sz * 0.4] });
-    }
+    // elevated belt: one pair of thin posts from the floor below + a cross beam (like the reference trestles)
+    const y0 = 0, y1 = LEVEL_H + BH - 0.13; // authored from the ground floor (BeltView places legs at y = 0)
     for (const sz of [-1, 1]) {
-      p.rod('metal', [-0.3, y0 + 0.2, sz * 0.4], [0.3, y1 - 0.2, sz * 0.4], 0.02, LEG, 5);
-      p.box('metal', [0.66, 0.06, 0.06], LEG, { pos: [0, y1 - 0.03, sz * 0.4] });
+      p.box('metal', [0.055, y1 - y0, 0.055], LEG, { pos: [0, (y0 + y1) / 2, sz * 0.42] });
+      p.box('matte', [0.14, 0.025, 0.14], C.black, { pos: [0, y0 + 0.0125, sz * 0.42] });
     }
-    for (const sx of [-1, 1]) p.box('metal', [0.06, 0.06, 0.86], LEG, { pos: [sx * 0.3, y1 - 0.03, 0] });
+    p.box('metal', [0.05, 0.05, 0.92], LEG, { pos: [0, y1 - 0.025, 0] });
+    p.box('metal', [0.04, 0.04, 0.84], LEG, { pos: [0, y0 + LEVEL_H * 0.45, 0] });
     return p.build().main!;
   }
   let s: Sample[];
@@ -230,31 +235,22 @@ function buildFrame(kind: ConveyorGeometryKind): THREE.BufferGeometry {
   else s = rampSamples(kind === 'rampDown');
   frameAlong(p, s);
   if (kind === 'straight') {
-    legPair(p, 0, 0, [0, 1], BH - 0.2);
-    for (const x of [-0.5, 0.5]) p.cyl('metal', 0.045, 0.045, 0.8, C.steelLight, { pos: [x * 0.94, BH - 0.06, 0] }, 8, 'z');
-    for (const sz of [-1, 1]) p.bolts([-0.35, BH - 0.07, sz * (HALF_W + 0.078)], [0.35, BH - 0.07, sz * (HALF_W + 0.078)], 3, [0, 0, sz], 0.016);
+    legPair(p, 0, 0, [0, 1], BH - 0.13);
   } else if (kind === 'curveL' || kind === 'curveR') {
     const mid = s[Math.floor(s.length / 2)];
-    legPair(p, mid.p.x, mid.p.z, [mid.l.x, mid.l.z], BH - 0.2);
+    legPair(p, mid.p.x, mid.p.z, [mid.l.x, mid.l.z], BH - 0.13);
   } else {
-    // ramp supports: pairs of posts under the frame, cross-braced
-    for (const x of [-1.2, -0.4, 0.4, 1.2]) {
+    // ramp supports: thin post pairs under the frame (taller as the belt climbs) with a cross beam
+    for (const x of [-1.1, -0.1, 0.9]) {
       let i = 0;
       while (i < s.length - 1 && s[i].p.x < x) i++;
-      const yTop = s[i].p.y - 0.2;
+      const yTop = s[i].p.y - 0.13;
       for (const sz of [-1, 1]) {
-        p.box('metal', [0.08, yTop, 0.08], LEG, { pos: [x, yTop / 2, sz * 0.42] });
-        p.box('matte', [0.18, 0.03, 0.18], C.black, { pos: [x, 0.015, sz * 0.42] });
+        p.box('metal', [0.055, yTop, 0.055], LEG, { pos: [x, yTop / 2, sz * 0.42] });
+        p.box('matte', [0.14, 0.025, 0.14], C.black, { pos: [x, 0.0125, sz * 0.42] });
       }
-      if (yTop > 0.6) {
-        p.box('metal', [0.06, 0.06, 0.9], LEG, { pos: [x, Math.min(yTop - 0.05, 0.5), 0] });
-        p.rod('metal', [x, 0.25, -0.42], [x, yTop - 0.1, 0.42], 0.018, LEG, 5);
-      }
+      p.box('metal', [0.05, 0.05, 0.92], LEG, { pos: [x, yTop - 0.025, 0] });
     }
-    // end rollers
-    p.cyl('metal', 0.05, 0.05, 0.82, C.steelLight, { pos: [s[0].p.x + 0.04, s[0].p.y - 0.06, 0] }, 8, 'z');
-    const e = s[s.length - 1];
-    p.cyl('metal', 0.05, 0.05, 0.82, C.steelLight, { pos: [e.p.x - 0.04, e.p.y - 0.06, 0] }, 8, 'z');
   }
   return p.build().main!;
 }

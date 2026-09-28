@@ -6,6 +6,7 @@ import {
 } from './hayGrid';
 import { HaySurface } from './hayShape';
 import { qualityProfile, type Quality } from './quality';
+import { STRAW_TEXTURE_METRES, strawTextures } from './textures';
 
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
@@ -17,13 +18,15 @@ const _up = new THREE.Vector3(0, 1, 0);
 const _c = new THREE.Color();
 
 /**
- * Stylised straw palette (sRGB), darkest → palest. Flat colours, no texture: the pile reads as a big faceted
- * low-poly mound; lighting on the flat-shaded facets does the rest.
+ * Soft tone multipliers (linear, around 1) over the straw texture, darkest → palest: creases and thin floor hay
+ * darker, crests and the upper pile brighter, large patches. The texture carries the straw colour.
  */
-const HAY_PALETTE = [0xa06a22, 0xbf8b34, 0xd6a847, 0xe6c165].map((h) => new THREE.Color(h));
-/** Straw clump size (m) before per-instance scale. */
-const CLUMP_RADIUS = 0.26;
-const CLUMP_HEIGHT = 0.12;
+const HAY_PALETTE = [0x8f8f8f, 0xc4c4c4, 0xe6e6e6, 0xffffff].map((h) => new THREE.Color(h));
+/** Straw colours of the loose straws lying on the surface (sRGB), picked per straw. */
+const STRAW_COLOURS = [0xc27a2c, 0xd48a36, 0xe0a04a, 0xa8662a, 0xecb866, 0x8a5520, 0xd09540].map((h) => new THREE.Color(h));
+/** Loose straws per surface patch instance and the patch radius (m). */
+const STRAWS_PER_PATCH = 12;
+const PATCH_RADIUS = 0.34;
 /** Cosmetic surface jitter: horizontal (fraction of a hay cell) and vertical (m, only on hay deeper than 0.25 m). */
 const JITTER_XZ = 0.22;
 const JITTER_Y = 0.07;
@@ -74,22 +77,25 @@ export class HayView {
     this.hay = hay;
     this.surface = new HaySurface(hay);
     this.quality = quality;
-    // Flat-shaded facets + palette vertex colours: no photographic texture, no normal map.
+    // Dense straw texture (colour + normal) with soft tone vertex colours; loose 3D straws lie on top.
+    const tex = strawTextures();
     this.material = new THREE.MeshStandardMaterial({
+      map: tex.map,
+      normalMap: tex.normalMap,
+      normalScale: new THREE.Vector2(1.1, 1.1),
       vertexColors: true,
-      flatShading: true,
-      roughness: 0.96,
-      metalness: 0,
-      envMapIntensity: 0.55,
-    });
-    this.tuftGeometry = createClumpGeometry();
-    this.tuftMaterial = new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      flatShading: true,
-      roughness: 0.95,
+      roughness: 0.92,
       metalness: 0,
       envMapIntensity: 0.5,
     });
+    this.tuftGeometry = createStrawPatchGeometry();
+    this.tuftMaterial = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.85,
+      metalness: 0,
+      envMapIntensity: 0.5,
+    });
+    this.applyTextureQuality();
     this.build();
   }
 
@@ -110,10 +116,11 @@ export class HayView {
     if (v) this.apply(v.c0, v.r0, v.c1, v.r1);
   }
 
-  /** Live: rebuilds the straw clump pool for the new budget. */
+  /** Live: rebuilds the loose-straw pool for the new budget and re-filters the straw textures. */
   setQuality(q: Quality): void {
     if (q === this.quality) return;
     this.quality = q;
+    this.applyTextureQuality();
     this.buildTufts();
     if (this.mesh) this.refreshAllTufts();
   }
@@ -121,6 +128,14 @@ export class HayView {
   /** Live tuft instances / pool capacity (QA). */
   get tuftStats(): { live: number; capacity: number } {
     return { live: this.tufts?.count ?? 0, capacity: this.slots?.capacity ?? 0 };
+  }
+
+  /** Anisotropic filtering of the shared straw textures: the pile is mostly seen at grazing angles. */
+  private applyTextureQuality(): void {
+    const a = qualityProfile(this.quality).anisotropy;
+    for (const t of [this.material.map, this.material.normalMap]) {
+      if (t && t.anisotropy !== a) { t.anisotropy = a; t.needsUpdate = true; }
+    }
   }
 
   dispose(): void {
@@ -156,6 +171,8 @@ export class HayView {
     this.jitterY = new Float32Array(n);
     this.jitterT = new Float32Array(n);
     this.marks = new Uint8Array(n);
+    const uv = new Float32Array(n * 2);
+    const k = 1 / STRAW_TEXTURE_METRES;
     const h = this.surface.visual;
     for (let r = 0; r < rows; r++) {
       const z = hay.originZ + (r + 0.5) * cs;
@@ -171,6 +188,8 @@ export class HayView {
         this.positions[i * 3 + 1] = this.surfaceY(i, h[i]);
         this.applied[i] = h[i];
         this.patch[i] = 0.7 * patchTone(x, z, 3.6, 17) + 0.3 * patchTone(x, z, 1.3, 29);
+        uv[i * 2] = this.positions[i * 3] * k;
+        uv[i * 2 + 1] = -this.positions[i * 3 + 2] * k;
       }
     }
     const quads = (cols - 1) * (rows - 1);
@@ -193,6 +212,7 @@ export class HayView {
     g.setAttribute('position', pos);
     g.setAttribute('normal', nor);
     g.setAttribute('color', col);
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setIndex(new THREE.BufferAttribute(index, 1));
     this.dynamicAttributes = [pos, nor, col];
     // Static bounds covering every height the pile can reach (avoids recomputing on edits).
@@ -227,8 +247,8 @@ export class HayView {
     const prof = qualityProfile(this.quality);
     const cap = prof.tufts;
     this.slots = new TuftSlots(this.cols * this.rows, prof.tuftsPerCell, cap);
-    // Clumps are bigger than the old straw cards: ~60 % of the profile density covers the surface as well.
-    this.tuftProbability = Math.min(1, (prof.tuftDensity * 0.6) / prof.tuftsPerCell);
+    // Every covered cell gets the profile density of loose-straw patches.
+    this.tuftProbability = Math.min(1, prof.tuftDensity / prof.tuftsPerCell);
     const mesh = new THREE.InstancedMesh(this.tuftGeometry, this.tuftMaterial, cap);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3).setUsage(THREE.DynamicDrawUsage);
@@ -348,7 +368,7 @@ export class HayView {
       if (want) {
         x = this.hay.originX + (c + 0.5 + (hash01(slot, 2) - 0.5) * 0.9) * cs;
         z = this.hay.originZ + (r + 0.5 + (hash01(slot, 3) - 0.5) * 0.9) * cs;
-        y = this.surfaceAt(x, z) - 0.035;
+        y = this.surfaceAt(x, z) + 0.005;
         if (y < 0.015) want = false;
       }
       if (!want) {
@@ -361,22 +381,23 @@ export class HayView {
       }
       const idx = slots.acquire(slot);
       if (idx < 0) continue;
-      // Lean along the surface normal (half way) and spin randomly.
+      // Lie on the surface (along its normal) and spin randomly.
       const ni = i * 3;
-      _n.set(this.normals[ni], this.normals[ni + 1], this.normals[ni + 2]).lerp(_up, 0.45).normalize();
+      _n.set(this.normals[ni], this.normals[ni + 1], this.normals[ni + 2]).lerp(_up, 0.1).normalize();
       _q.setFromUnitVectors(_up, _n);
       _qYaw.setFromAxisAngle(_up, hash01(slot, 4) * Math.PI * 2);
       _q.multiply(_qYaw);
-      const thin = h < 0.25 ? 0.55 + h * 1.8 : 1;
-      const sc = (0.75 + hash01(slot, 5) * 0.6) * thin;
+      const thin = h < 0.25 ? 0.6 + h * 1.6 : 1;
+      const sc = (0.8 + hash01(slot, 5) * 0.5) * thin;
       _p.set(x, y, z);
-      _s.set(sc, sc * (0.85 + hash01(slot, 6) * 0.35), sc);
+      _s.set(sc, sc, sc);
       _m.compose(_p, _q, _s);
       mesh.setMatrixAt(idx, _m);
-      // palette tone of the underlying surface, sometimes one step lighter (never the darkest crease tone)
+      // follows the surface tone (straws in creases are darker), with a little per-patch variation
       const base = hayToneIndex(h, 0, this.patch[i], this.jitterT[i], WORLD.pile.height);
-      const t = Math.max(1, Math.min(HAY_TONES - 1, base + (hash01(slot, 7) < 0.3 ? 1 : 0)));
-      mesh.setColorAt(idx, _c.copy(HAY_PALETTE[t]));
+      const t = Math.max(1, Math.min(HAY_TONES - 1, base));
+      const l = 0.9 + hash01(slot, 7) * 0.2;
+      mesh.setColorAt(idx, _c.copy(HAY_PALETTE[t]).multiplyScalar(l));
       this.touchTuft(idx);
     }
   }
@@ -415,36 +436,50 @@ export class HayView {
 }
 
 /**
- * Low-poly straw clump, base at y = 0 (sits half sunk in the surface): an irregular six-sided lump with a twisted
- * shoulder ring and an off-centre crown. 18 triangles, flat shaded, no texture; the per-instance palette tone
- * colours it (the shoulder faces are a touch lighter so each clump reads as a tuft, not a pyramid).
+ * Patch of loose straws lying on the surface (base plane y = 0, the instance is aligned with the pile normal):
+ * STRAWS_PER_PATCH thin straight straws, random direction, length 0.28–0.62 m, width 2–3.6 cm, stacked a few mm
+ * apart with one end sometimes lifted. Each straw is a creased ribbon (4 triangles: two long faces tilted like a
+ * round stem) so it catches light on one side and shades on the other. Colour per straw from STRAW_COLOURS.
  */
-function createClumpGeometry(): THREE.BufferGeometry {
+function createStrawPatchGeometry(): THREE.BufferGeometry {
   const pos: number[] = [];
+  const nor: number[] = [];
   const col: number[] = [];
-  const tri = (a: number[], b: number[], c: number[], l: number) => {
-    pos.push(...a, ...b, ...c);
-    for (let k = 0; k < 3; k++) col.push(l, l, l);
-  };
-  const R = CLUMP_RADIUS, H = CLUMP_HEIGHT;
-  const base: number[][] = [], mid: number[][] = [];
-  const rb = [1, 0.78, 1.1, 0.86, 1.04, 0.8], rm = [0.62, 0.5, 0.66, 0.48, 0.58, 0.54], hm = [0.62, 0.7, 0.55, 0.74, 0.6, 0.68];
-  for (let k = 0; k < 6; k++) {
-    const a = (k / 6) * Math.PI * 2, am = a + Math.PI / 6;
-    base.push([Math.cos(a) * R * rb[k], 0, Math.sin(a) * R * rb[k]]);
-    mid.push([Math.cos(am) * R * rm[k], H * hm[k], Math.sin(am) * R * rm[k]]);
-  }
-  const top = [R * 0.12, H, -R * 0.08];
-  for (let k = 0; k < 6; k++) {
-    const n = (k + 1) % 6;
-    tri(base[k], mid[k], base[n], 0.94);
-    tri(base[n], mid[k], mid[n], 1.02);
-    tri(mid[k], top, mid[n], 1.1);
+  let seed = 0x2f1;
+  const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  const v = new THREE.Vector3(), d = new THREE.Vector3(), side = new THREE.Vector3(), n = new THREE.Vector3();
+  const push = (p: THREE.Vector3, nn: THREE.Vector3, c: THREE.Color) => { pos.push(p.x, p.y, p.z); nor.push(nn.x, nn.y, nn.z); col.push(c.r, c.g, c.b); };
+  for (let k = 0; k < STRAWS_PER_PATCH; k++) {
+    const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * PATCH_RADIUS;
+    const cx = Math.cos(a) * rr, cz = Math.sin(a) * rr;
+    const dir = rnd() * Math.PI;
+    const len = 0.28 + rnd() * 0.34, w = 0.02 + rnd() * 0.016;
+    const y0 = 0.004 + k * 0.004, lift = rnd() < 0.45 ? rnd() * 0.07 : 0;
+    d.set(Math.cos(dir), 0, Math.sin(dir));
+    const a0 = new THREE.Vector3(cx - d.x * len / 2, y0, cz - d.z * len / 2);
+    const a1 = new THREE.Vector3(cx + d.x * len / 2, y0 + lift, cz + d.z * len / 2);
+    d.subVectors(a1, a0).normalize();
+    side.set(-d.z, 0, d.x).normalize();
+    const c = STRAW_COLOURS[Math.floor(rnd() * STRAW_COLOURS.length)].clone().multiplyScalar(0.92 + rnd() * 0.16);
+    const ridge = w * 0.35; // crease height: the stem is round-ish
+    for (const sgn of [-1, 1]) {
+      // face between the ridge (centre line, raised) and one edge
+      const e0 = a0.clone().addScaledVector(side, sgn * w / 2), e1 = a1.clone().addScaledVector(side, sgn * w / 2);
+      const r0 = a0.clone().setY(a0.y + ridge), r1 = a1.clone().setY(a1.y + ridge);
+      n.copy(side).multiplyScalar(sgn * 0.8).add(v.set(0, 1, 0)).normalize();
+      const shade = c.clone().multiplyScalar(sgn > 0 ? 1.08 : 0.8);
+      // winding facing up (+y side)
+      const tri = (p0: THREE.Vector3, p1: THREE.Vector3, p2: THREE.Vector3) => {
+        const fn = new THREE.Vector3().subVectors(p1, p0).cross(new THREE.Vector3().subVectors(p2, p0));
+        if (fn.y < 0) { push(p0, n, shade); push(p2, n, shade); push(p1, n, shade); } else { push(p0, n, shade); push(p1, n, shade); push(p2, n, shade); }
+      };
+      tri(r0, e0, e1); tri(r0, e1, r1);
+    }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.computeVertexNormals();
   g.computeBoundingSphere();
   return g;
 }

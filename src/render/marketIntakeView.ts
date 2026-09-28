@@ -4,6 +4,7 @@ import type { IntakeLoad } from '../sim/machines/sellStation';
 import type { Sim } from '../sim/sim';
 import { createConveyorGeometry } from './models/index';
 import { Parts, shade } from './models/parts';
+import { strawHeapGeometry } from './models/strawHeap';
 import { modelMaterial } from './models/materials';
 import { COLORS, paintGeometry, paletteMaterial } from './palette';
 import { beltTexture } from './textures';
@@ -124,16 +125,16 @@ export class MarketIntakeView {
     this.highlight.visible = false;
     this.root.add(this.highlight);
 
-    // ----- hay bundles (chunky low-poly, per-instance tint)
-    const bg = new THREE.IcosahedronGeometry(0.2, 0);
-    bg.scale(1.35, 0.72, 1.1);
-    const bm = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0, flatShading: true });
+    // ----- hay bundles: straw mini-heaps (same family as the belt items), slight per-instance tint
+    const bg = strawHeapGeometry(0);
+    bg.scale(1.25, 1.25, 1.25);
+    const bm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 });
     this.disposables.push(bg, bm);
     this.bundles = new THREE.InstancedMesh(bg, bm, MAX_BUNDLES);
     this.bundles.count = 0;
     this.bundles.castShadow = true;
     this.bundles.frustumCulled = false;
-    for (let k = 0; k < MAX_BUNDLES; k++) this.bundles.setColorAt(k, _c.set(COLORS.hay));
+    for (let k = 0; k < MAX_BUNDLES; k++) this.bundles.setColorAt(k, _c.setRGB(1, 1, 1));
     this.root.add(this.bundles);
 
     this.buildStore();
@@ -211,13 +212,13 @@ export class MarketIntakeView {
         if (z < I.z0 + 0.1 || z > I.z1 - 0.05) continue;
         const seed = (li * 7 + k * 13) % 17;
         const bob = Math.sin((l.t * 9) + seed) * 0.012;
-        _p.set(cx + ((seed % 3) - 1) * 0.1, I.beltY + 0.13 + bob, z);
-        _q.setFromEuler(_e.set(0, seed * 0.7 + l.t * 0.4, (seed % 2 ? 0.08 : -0.06)));
+        _p.set(cx + ((seed % 3) - 1) * 0.1, I.beltY + 0.005 + Math.max(0, bob), z);
+        _q.setFromEuler(_e.set(0, seed * 0.7, 0));
         const sc = 0.85 + (seed % 5) * 0.08;
         _s.set(sc, sc, sc);
         _m.compose(_p, _q, _s);
         this.bundles.setMatrixAt(n, _m);
-        this.bundles.setColorAt(n, _c.set(seed % 3 === 0 ? COLORS.hayLight : seed % 3 === 1 ? COLORS.hay : 0xd9a441));
+        this.bundles.setColorAt(n, _c.setRGB(1, 0.94 + (seed % 3) * 0.03, 0.9 + (seed % 5) * 0.025));
         n++;
       }
     }

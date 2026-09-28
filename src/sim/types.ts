@@ -32,6 +32,12 @@ export const rotateDir = (d: Dir, r: Rot): Dir => (((d + r) & 3) as Dir);
 
 export type ItemType = 'hay' | 'bale' | 'wrapped';
 export const ITEM_TYPES: readonly ItemType[] = ['hay', 'bale', 'wrapped'];
+/**
+ * The only things the Market converts into money: hay and the hay products made from it (bales, wrapped bales).
+ * Anything else (needles, tools, buildings, unknown data from a save) is refused by the chute and never paid.
+ */
+export const SELLABLE_ITEMS: ReadonlySet<string> = new Set<ItemType>(['hay', 'bale', 'wrapped']);
+export function isSellable(type: unknown): type is ItemType { return typeof type === 'string' && SELLABLE_ITEMS.has(type); }
 
 /**
  * A discrete packet moving through the factory (belts, machine ports).

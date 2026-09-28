@@ -2,50 +2,19 @@ import * as THREE from 'three';
 import { COLORS } from '../palette';
 import type { ItemModelKind } from './api';
 import { C } from './kit';
-import { lumpify, Parts, rng } from './parts';
+import { Parts } from './parts';
 import { baleParts } from './processing';
+import { strawHeapGeometry } from './strawHeap';
 
 /**
  * Belt item geometries for instancing (one InstancedMesh per item type). Each geometry sits ON the belt:
  * base at y = 0, centred in X/Z, long axis along +X (travel direction). Attributes: position, normal,
  * uv (atlas solid blocks) and color, so it renders with paletteMaterial() or modelMaterial().
- *   item:hay            lumpy straw clump (~0.46 × 0.24 × 0.4)
+ *   item:hay, hay1, hay2  straw mini-heaps (3 shapes, ~0.34 × 0.24 × 0.32; see strawHeap.ts)
  *   item:bale           twine-bound bale (0.55 × 0.36 × 0.42)
  *   item:wrapped        white film-wrapped bale
  *   item:wrappedPremium wrapped bale with gold stripes
  */
-
-function hayClump(): THREE.BufferGeometry {
-  const p = new Parts();
-  const g = new THREE.IcosahedronGeometry(0.2, 1);
-  lumpify(g, 0.16, 7);
-  g.scale(1.15, 0.62, 1.0);
-  g.translate(0, 0.11, 0);
-  p.add('matte', g, C.hay);
-  const lump2 = lumpify(new THREE.IcosahedronGeometry(0.11, 0), 0.2, 9);
-  lump2.translate(0.1, 0.17, 0.06);
-  p.add('matte', lump2, C.hayLight);
-  // loose straws poking out
-  const r = rng(3);
-  for (let i = 0; i < 9; i++) {
-    const a = r() * Math.PI * 2;
-    const len = 0.14 + r() * 0.12;
-    p.box('matte', [len, 0.012, 0.012], i % 2 ? C.hayLight : C.hayDark, {
-      pos: [Math.cos(a) * 0.17, 0.08 + r() * 0.12, Math.sin(a) * 0.15],
-      rot: [0, -a, (r() - 0.5) * 0.9],
-    });
-  }
-  const out = p.build().main!;
-  // light from above, darker crevices
-  const pos = out.getAttribute('position');
-  const col = out.getAttribute('color');
-  const rr = rng(11);
-  for (let i = 0; i < pos.count; i++) {
-    const f = 0.78 + 0.34 * Math.min(1, pos.getY(i) / 0.24) + (rr() - 0.5) * 0.12;
-    col.setXYZ(i, Math.min(1, col.getX(i) * f), Math.min(1, col.getY(i) * f), Math.min(1, col.getZ(i) * f));
-  }
-  return out;
-}
 
 function bale(): THREE.BufferGeometry {
   const p = new Parts();
@@ -68,7 +37,9 @@ function wrapped(premium: boolean): THREE.BufferGeometry {
 
 export function buildItemGeometry(kind: ItemModelKind): THREE.BufferGeometry {
   switch (kind) {
-    case 'item:hay': return hayClump();
+    case 'item:hay': return strawHeapGeometry(0);
+    case 'item:hay1': return strawHeapGeometry(1);
+    case 'item:hay2': return strawHeapGeometry(2);
     case 'item:bale': return bale();
     case 'item:wrapped': return wrapped(false);
     case 'item:wrappedPremium': return wrapped(true);

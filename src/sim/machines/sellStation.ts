@@ -2,7 +2,7 @@ import { ITEMS } from '../../config/items';
 import { WORLD } from '../../config/world';
 import type { BuildingInit, InfoLine, InteractionOption } from '../building';
 import type { SimContext } from '../interfaces';
-import { ITEM_TYPES, type ItemPacket, type ItemType } from '../types';
+import { isSellable, ITEM_TYPES, type ItemPacket, type ItemType } from '../types';
 import { heldBarrow, playerAmount, takeFromPlayer } from './playerTransfer';
 import { countsLabel, EPS, fmtMoney, fmtNum, fmtRate, hayEq, itemLabel, Machine, num, obj, slipNeedles } from './shared';
 
@@ -32,11 +32,13 @@ export class SellStation extends Machine {
     this.anim.pulse = 0;
   }
 
+  /** Only hay (and hay products) is sellable: anything else is refused at the port and stays on the belt. */
   override canAccept(item: ItemPacket, port: number, _ctx: SimContext): boolean {
-    return item.amount > 0 && this.inPortAccepts(port, item.type);
+    return isSellable(item.type) && item.amount > 0 && this.inPortAccepts(port, item.type);
   }
 
   override accept(item: ItemPacket, _port: number, ctx: SimContext): void {
+    if (!isSellable(item.type)) return; // defensive: never paid, even if a caller skipped canAccept
     this.prepare();
     if (item.needleId !== undefined && !item.scanned) {
       this.slipped.push(item.needleId);

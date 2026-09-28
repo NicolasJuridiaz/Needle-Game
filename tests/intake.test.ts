@@ -148,4 +148,23 @@ describe('Market intake: the only way to sell what the player carries', () => {
     expect(isReservedCell(i.x + 1, i.z0)).toBe(false);
     expect(isReservedCell(i.x, i.z1)).toBe(false); // the chute itself starts there
   });
+
+  it('only hay (and hay products) is ever sold: other types are refused at the chute and never paid', () => {
+    const sim = new Sim(910);
+    const chute = sim.sellStation!;
+    const port = inPorts(chute)[0].index;
+    const m0 = sim.progress.money;
+    let sales = 0;
+    sim.events.on('sale', () => { sales++; });
+    for (const bogus of ['needle', 'tool', 'shovel', 'conveyor', 'money', ''] as const) {
+      const pkt = { type: bogus as unknown as 'hay', amount: 10 };
+      expect(chute.canAccept(pkt, port, sim)).toBe(false);
+      chute.accept(pkt, port, sim); // even if someone skips canAccept
+      expect(sim.progress.recordSale(bogus as unknown as 'hay', 10, true, { x: 0, y: 0, z: 0 })).toBe(0);
+    }
+    expect(sim.progress.money).toBe(m0);
+    expect(sales).toBe(0);
+    // the real hay products still sell
+    for (const t of ['hay', 'bale', 'wrapped'] as const) expect(chute.canAccept({ type: t, amount: 1 }, port, sim)).toBe(true);
+  });
 });

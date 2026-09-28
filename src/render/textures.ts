@@ -104,6 +104,68 @@ function grey(v: number): string {
 }
 
 // ------------------------------------------------------------------------------------------------
+// Straw (hay pile surface, mini-heaps)
+// ------------------------------------------------------------------------------------------------
+
+/** World metres covered by one repeat of the straw texture. */
+export const STRAW_TEXTURE_METRES = 2.2;
+
+/**
+ * Tileable dense straw texture (colour + normal): a dark brown bed under several layers of straight, thin
+ * straws in orange-gold, each with a darker shadow line and a pale highlight edge, random orientation, varied
+ * length/width/tone. Near-final colours (the pile multiplies them by soft vertex tones around 1).
+ */
+export function strawTextures(): { map: THREE.Texture; normalMap: THREE.Texture } {
+  const key = 'straw';
+  const hit = cache.get(key);
+  if (hit && !(hit instanceof THREE.Texture)) return hit;
+  const S = 1024;
+  const col = createCanvas(S, S), hgt = createCanvas(S, S);
+  const c = context2d(col), g = context2d(hgt);
+  const rng = new Rng(0x57a);
+  c.fillStyle = '#3a2008'; c.fillRect(0, 0, S, S);
+  g.fillStyle = '#000'; g.fillRect(0, 0, S, S);
+  c.lineCap = 'butt'; g.lineCap = 'butt';
+  // deep → top layers: darker and denser below, brighter and longer on top
+  const layers = [
+    { n: 2400, h: [22, 30], s: [0.6, 0.75], l: [0.16, 0.26], wid: [4, 7], len: [60, 160], height: 0.2 },
+    { n: 2400, h: [24, 33], s: [0.65, 0.82], l: [0.3, 0.42], wid: [4, 7], len: [80, 220], height: 0.55 },
+    { n: 1900, h: [27, 36], s: [0.68, 0.85], l: [0.42, 0.56], wid: [4, 7.5], len: [90, 260], height: 0.85 },
+    { n: 500, h: [32, 40], s: [0.6, 0.78], l: [0.56, 0.68], wid: [3, 5.5], len: [80, 220], height: 1.0 },
+  ];
+  for (const L of layers) {
+    for (let i = 0; i < L.n; i++) {
+      const x = rng.next() * S, y = rng.next() * S;
+      const len = rng.range(L.len[0], L.len[1]);
+      const a = rng.next() * Math.PI;
+      const dx = Math.cos(a) * len * 0.5, dy = Math.sin(a) * len * 0.5;
+      const nx = -Math.sin(a), ny = Math.cos(a);
+      const wid = rng.range(L.wid[0], L.wid[1]);
+      const hue = rng.range(L.h[0], L.h[1]), sat = rng.range(L.s[0], L.s[1]), lit = rng.range(L.l[0], L.l[1]);
+      const hv = L.height * rng.range(0.8, 1);
+      wrapOffsets(S, S, x, y, len, (ox, oy) => {
+        const x0 = x + ox - dx, y0 = y + oy - dy, x1 = x + ox + dx, y1 = y + oy + dy;
+        // cast shadow (down-right), body, highlight edge
+        c.strokeStyle = 'rgba(35,20,6,0.55)'; c.lineWidth = wid + 2;
+        c.beginPath(); c.moveTo(x0 + 2, y0 + 2.5); c.lineTo(x1 + 2, y1 + 2.5); c.stroke();
+        c.strokeStyle = hsl(hue, sat, lit); c.lineWidth = wid;
+        c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
+        c.strokeStyle = hsl(hue + 4, sat * 0.8, Math.min(0.92, lit + 0.18)); c.lineWidth = Math.max(1, wid * 0.3);
+        c.beginPath(); c.moveTo(x0 - nx * wid * 0.25, y0 - ny * wid * 0.25); c.lineTo(x1 - nx * wid * 0.25, y1 - ny * wid * 0.25); c.stroke();
+        g.strokeStyle = grey(hv); g.lineWidth = wid;
+        g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      });
+    }
+  }
+  const map = canvasTexture(col, { repeat: true, anisotropy: 8 });
+  const normalMap = normalMapFromHeight(canvasHeights(hgt), S, S, 3.2);
+  normalMap.anisotropy = 8;
+  const out = { map, normalMap };
+  cache.set(key, out);
+  return out;
+}
+
+// ------------------------------------------------------------------------------------------------
 // Building materials
 // ------------------------------------------------------------------------------------------------
 
@@ -251,22 +313,22 @@ export function plywoodTexture(): THREE.Texture {
 /** Rubber belt with transverse cleats. V runs along the belt (4 cleats per repeat). */
 export function beltTexture(): THREE.Texture {
   return cached('belt', () => {
+    // black rubber belt: fine grain, faint lengthwise wear and a subtle splice every half metre (makes motion visible)
     const W = 128, H = 128;
     const cv = createCanvas(W, H);
     const c = context2d(cv);
     const rng = new Rng(0xbe1);
-    c.fillStyle = '#2c2d2f'; c.fillRect(0, 0, W, H);
-    for (let i = 0; i < 900; i++) {
-      c.fillStyle = `rgba(${rng.next() < 0.5 ? '255,255,255' : '0,0,0'},${rng.range(0.03, 0.09)})`;
+    c.fillStyle = '#1e1f21'; c.fillRect(0, 0, W, H);
+    for (let i = 0; i < 1400; i++) {
+      c.fillStyle = `rgba(${rng.next() < 0.5 ? '255,255,255' : '0,0,0'},${rng.range(0.02, 0.06)})`;
       c.fillRect(rng.next() * W, rng.next() * H, 1.5, 1.5);
     }
-    for (let k = 0; k < 4; k++) {
-      const y = k * (H / 4) + 6;
-      c.fillStyle = '#1b1c1d'; c.fillRect(0, y + 7, W, 4);
-      c.fillStyle = '#4a4c4f'; c.fillRect(0, y, W, 8);
-      c.fillStyle = '#6a6d70'; c.fillRect(0, y, W, 2);
+    for (let i = 0; i < 10; i++) {
+      c.fillStyle = `rgba(255,255,255,${rng.range(0.015, 0.035)})`;
+      c.fillRect(20 + rng.next() * (W - 40), 0, rng.range(1, 3), H);
     }
-    c.fillStyle = '#1e1f20'; c.fillRect(0, 0, 6, H); c.fillRect(W - 6, 0, 6, H);
+    for (const y of [10, 74]) { c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillRect(0, y, W, 2); c.fillStyle = 'rgba(255,255,255,0.05)'; c.fillRect(0, y + 2, W, 1); }
+    c.fillStyle = '#141516'; c.fillRect(0, 0, 4, H); c.fillRect(W - 4, 0, 4, H);
     return canvasTexture(cv, { repeat: true, anisotropy: 4 });
   });
 }
