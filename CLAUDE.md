@@ -22,6 +22,10 @@ Project Needle is a first-person 3D incremental factory game for the web, built 
 7. Remote analytics is opt-in: never load, initialise or send to ByteBrew before the player's explicit consent
    (`src/game/analyticsConsent.ts`); `?analytics=0` always wins. See docs/ANALYTICS_PRIVACY_NOTES.md.
 
+8. Owner rule: after every iteration, publish a playable build and give the owner the link. Build with `npm run build`,
+   drop the CrazyGames SDK `<script>` (the artifact CSP blocks it; the game runs without it), and republish the same
+   Artifact so the URL stays the same: https://claude.ai/artifact/WQifEt2JUYDFMfRJJWqBVz
+
 ## Useful commands
 
 ```bash
