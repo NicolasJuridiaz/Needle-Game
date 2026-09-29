@@ -189,7 +189,7 @@ export class BuildMode {
 
   private updatePlace(o: Vec3, d: Vec3, input: Input, _aim: Aim): void {
     const type = this.selected;
-    if (!type) { this.visuals.hideGhost(); this.reason = 'Pick something in the Shop'; return; }
+    if (!type) { this.visuals.hideGhost(); this.reason = 'Pick something at SUPPLY CO.'; return; }
     const level = this.targetLevel(o, d, type);
     const cell = this.cellFromRay(o, d, type, this.rot, level);
     this.cursor = cell;

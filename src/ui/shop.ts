@@ -83,7 +83,7 @@ export class Shop extends Panel {
     const ctx = env.ctx;
     const panel = h('div', 'pn-panel pn-shop', this.el);
     const head = h('div', 'pn-panel-head', panel);
-    head.innerHTML = `<span class="pn-panel-title-ic">${icon('shop')}</span><span class="pn-panel-title">Shop</span>`;
+    head.innerHTML = `<span class="pn-panel-title-ic">${icon('shop')}</span><span class="pn-panel-title">SUPPLY CO.</span>`;
     const money = h('div', 'pn-balance', head);
     money.innerHTML = `<span class="pn-balance-ic">${icon('money')}</span>`;
     this.moneyText = new TextSlot(h('span', 'pn-balance-val', money));

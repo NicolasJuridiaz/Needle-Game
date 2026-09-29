@@ -59,8 +59,8 @@ const ANY: ItemType[] | undefined = undefined;
 
 export const BUILDABLES: Record<BuildingType, BuildableDef> = {
   sellStation: {
-    id: 'sellStation', name: 'Market Chute', category: 'factory',
-    desc: 'Sells everything delivered to it. Counts towards Orders.',
+    id: 'sellStation', name: 'SELL HAY', category: 'factory',
+    desc: 'Sells hay and hay products delivered by belt. Counts towards Orders.',
     requiresNode: null, cost: 0, costGrowth: 1, footprint: [3, 4], height: 3.4, power: 0,
     ports: [
       { kind: 'in', cell: [2, 0], dir: 0, items: ANY }, { kind: 'in', cell: [2, 1], dir: 0, items: ANY },

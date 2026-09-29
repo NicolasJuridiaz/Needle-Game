@@ -220,7 +220,7 @@ export class Sim implements SimContext {
       return fail(outside ? 'Outside the warehouse floor' : 'Space is occupied', bad);
     }
     const reserved = cells.filter((c) => isReservedCell(c.x, c.z));
-    if (reserved.length) return fail('Reserved for the Market intake and Store', reserved);
+    if (reserved.length) return fail('Reserved for SELL HAY or SUPPLY CO.', reserved);
 
     // Level-1 machines need platforms underneath.
     if (cell.level === 1 && def.needsPlatformOnLevel1) {

@@ -76,7 +76,7 @@ export class Hotbar implements UIPart {
         s.state = state;
         s.el.className = `pn-slot is-${state}`;
         if (pop) replayClass(s.el, 'is-pop');
-        s.el.title = state === 'locked' ? `${def.name} - unlock its plans in the Work Tree` : state === 'buyable' ? `${def.name} - buy it in the Shop` : def.name;
+        s.el.title = state === 'locked' ? `${def.name} - unlock its plans in the Work Tree` : state === 'buyable' ? `${def.name} - buy it at SUPPLY CO.` : def.name;
       }
       if (state === 'buyable') {
         s.price.textContent = fmtPrice(def.cost);

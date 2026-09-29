@@ -13,7 +13,7 @@ const PULSE_TAU = 0.25;
 export interface IntakeLoad { hay: number; bale: number; wrapped: number; t: number }
 
 /**
- * Market Chute: sells everything delivered to any input port instantly. What the PLAYER carries (carry + held
+ * SELL HAY: sells everything delivered to any input port instantly. What the PLAYER carries (carry + held
  * wheelbarrow) is no longer sold by pressing E on the chute: it is dropped on the fixed Market intake belt
  * (`depositIntake`, WORLD.intake), rides it for `transitSeconds` and is then sold here with exactly the same sale call
  * as the old direct sale (manual, not "via belt": belt-only Orders are unaffected). Unscanned hidden needles in the
@@ -68,9 +68,9 @@ export class SellStation extends Machine {
     const hay = playerAmount(ctx, 'hay');
     const bale = playerAmount(ctx, 'bale');
     const wrapped = playerAmount(ctx, 'wrapped');
-    if (hay <= EPS && bale < 1 && wrapped < 1) return { kind: 'deposit', label: 'Market Chute', enabled: false, reason: 'Drop hay on the intake belt to sell it' };
+    if (hay <= EPS && bale < 1 && wrapped < 1) return { kind: 'deposit', label: 'SELL HAY', enabled: false, reason: 'Drop hay on the intake belt to sell it' };
     // Never a "Sell" label here: selling happens only at the belt (worth ${fmtMoney(this.saleValue(ctx))} right now).
-    return { kind: 'deposit', label: 'Market Chute', enabled: false, reason: `Drop it on the SELL HAY intake belt (${fmtMoney(this.saleValue(ctx))})` };
+    return { kind: 'deposit', label: 'SELL HAY', enabled: false, reason: `Drop it on the SELL HAY intake belt (${fmtMoney(this.saleValue(ctx))})` };
   }
 
   /** E on the chute itself no longer sells: carried items go on the intake belt (depositIntake). */

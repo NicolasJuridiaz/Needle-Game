@@ -520,7 +520,7 @@ export class WorkTree extends Panel {
   }
 }
 
-/** "Unlocks the Hay Hopper and Conveyor in the Shop" style text for plan nodes. */
+/** "Unlocks the Hay Hopper and Conveyor at SUPPLY CO." style text for plan nodes. */
 function unlocksText(n: TechNode): string {
   const u = n.unlocks;
   if (!u) return '';
@@ -529,5 +529,5 @@ function unlocksText(n: TechNode): string {
   if (u.tool) names.push(TOOLS[u.tool].name);
   if (u.wheelbarrow) names.push(WHEELBARROW.name);
   if (!names.length) return '';
-  return `Adds ${names.join(', ')} to the Shop`;
+  return `Adds ${names.join(', ')} to SUPPLY CO.`;
 }

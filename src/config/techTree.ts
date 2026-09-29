@@ -101,7 +101,7 @@ export const TECH_NODES: TechNode[] = [
   { id: 'p_shovel', name: 'Shovel', branch: 'player', kind: 'plan', requires: ['p_hands@2'], icon: 'shovel', pos: [0, 1], leveled: true,
     unlocks: { tool: 'shovel' },
     levels: [
-      lvl(1, 'Unlocks the Shovel in the Shop.'),
+      lvl(1, 'Unlocks the Shovel at SUPPLY CO.'),
       lvm(1, 100, 'Wide blade: +60% hay over a wider area.', mul('tool.shovel.dig', 1.6), mul('tool.shovel.radius', 1.4)),
       lvm(1, 300, 'Quick scoop: 30% faster swings.', mul('tool.shovel.interval', 0.7)),
       lvm(1, 900, 'Steel shovel: +30% hay and +0.5 m reach.', mul('tool.shovel.dig', 1.3), up('tool.shovel.reach', 0.5)),

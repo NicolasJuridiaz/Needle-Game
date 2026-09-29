@@ -34,7 +34,7 @@ export interface OrderDef {
 
 export const ORDERS: OrderDef[] = [
   { id: 'o_first', title: 'First Delivery', client: 'Old Mabel\'s Feed Store', metric: 'sell', item: 'hay', target: 60,
-    reward: { money: 30, wp: 1 }, after: [], hint: 'Grab hay, then press E at the Market Chute.' },
+    reward: { money: 30, wp: 1 }, after: [], hint: 'Drop the hay on the SELL HAY belt (E).' },
   { id: 'o_cleanup', title: 'Barn Cleanup', client: 'Old Mabel\'s Feed Store', metric: 'sell', item: 'hay', target: 300,
     reward: { money: 120, wp: 2 }, after: ['o_first'], hint: 'A Shovel scoops 3x more than your hands.' },
   { id: 'o_dig', title: 'Dig Deeper', client: 'Haystack Heritage Society', metric: 'extractManual', target: 900,
@@ -50,7 +50,7 @@ export const ORDERS: OrderDef[] = [
   { id: 'o_iron', title: 'Iron Workers', client: 'Haystack Heritage Society', metric: 'extractMachine', target: 3000,
     reward: { money: 1600, wp: 3 }, after: ['o_feed'], hint: 'A powered Piston Rake digs for you.' },
   { id: 'o_handsoff', title: 'Hands Off', client: 'Valley Stables', metric: 'sellViaBelt', target: 3000,
-    reward: { money: 2200, wp: 4 }, after: ['o_iron'], hint: 'Hopper + Conveyor into the Market Chute.' },
+    reward: { money: 2200, wp: 4 }, after: ['o_iron'], hint: 'Hopper + Conveyor into the SELL HAY.' },
   { id: 'o_powered', title: 'Power Grid', client: 'County Power Co-op', metric: 'poweredMachines', target: 3,
     reward: { money: 2000, wp: 3 }, after: ['o_stoke'], hint: 'Power Poles spread power across the floor.' },
   { id: 'o_wholesale', title: 'Wholesale', client: 'Mega Mart Livestock', metric: 'sell', item: 'hay', target: 20000,

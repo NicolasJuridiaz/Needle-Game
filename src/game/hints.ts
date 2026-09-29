@@ -61,7 +61,7 @@ const RULES: HintRule[] = [
     id: 'shop', key: 'KeyB',
     when: (g) => [...g.sim.progress.nodes.keys()].some((id) => id === 'p_shovel' || id === 'p_bucket'),
     done: (g) => g.sim.progress.ownedTools.size > 1,
-    text: (g) => `New plans! Buy it at the STORE next to the belt (or press ${g.label('KeyB')})`,
+    text: (g) => `New plans! Buy it at SUPPLY CO. next to the belt (or press ${g.label('KeyB')})`,
   },
   {
     id: 'equip',
@@ -87,7 +87,7 @@ const RULES: HintRule[] = [
     id: 'build', key: 'KeyQ',
     when: (g) => g.sim.buildingsOfType('sellStation').length > 0 && [...g.sim.progress.nodes.keys()].some((id) => id === 'f_generator' || id === 'x_hopper'),
     done: (g) => g.sim.progress.stats.machinesBuilt > 0,
-    text: (g) => `Buy a machine in the Shop (${g.label('KeyB')}), place it with LMB, rotate with ${g.label('KeyR')}`,
+    text: (g) => `Buy a machine at SUPPLY CO. (${g.label('KeyB')}), place it with LMB, rotate with ${g.label('KeyR')}`,
   },
   {
     id: 'feed', key: 'E',

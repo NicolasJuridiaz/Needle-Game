@@ -15,7 +15,7 @@ import { Renderer } from '../render/renderer';
 import { Environment } from '../render/environment';
 import { HayView } from '../render/hayView';
 import { NeedleView } from '../render/needleView';
-import { INTAKE_AIM_BOX, MarketIntakeView, rayBox, STORE_AIM_BOX } from '../render/marketIntakeView';
+import { INTAKE_AIM_BOX, MarketIntakeView, rayBox, storeAimBox } from '../render/marketIntakeView';
 import { BeltView } from '../render/beltView';
 import { BuildingViews } from '../render/buildingViews';
 import { Ghost } from '../render/ghost';
@@ -539,7 +539,7 @@ export class Game implements UIContext {
     this.marketAim = null;
     const ahead = aim.kind === 'none' ? Infinity : aim.distance;
     const tIntake = rayBox(o, d, INTAKE_AIM_BOX);
-    const tStore = rayBox(o, d, STORE_AIM_BOX);
+    const tStore = rayBox(o, d, storeAimBox(sim));
     if (tIntake !== null && tIntake <= interactRange && tIntake < ahead && (tStore === null || tIntake <= tStore)) {
       this.marketAim = 'intake';
       const carrying = !sim.player.carry.isEmpty() || (holding && !barrow!.inv.isEmpty());
@@ -547,7 +547,7 @@ export class Game implements UIContext {
       info = null;
     } else if (tStore !== null && tStore <= interactRange + 0.5 && tStore < ahead) {
       this.marketAim = 'store';
-      prompt = { key: 'E', text: 'Open the Store', enabled: true };
+      prompt = { key: 'E', text: 'Open SUPPLY CO.', enabled: true };
       info = null;
     }
     if (!prompt && holding) prompt = { key: 'E', text: 'Park the wheelbarrow', enabled: true };

@@ -40,7 +40,7 @@ export const CONTROLS: { title: string; rows: ControlRow[] }[] = [
     title: 'Menus',
     rows: [
       { keys: ['KeyT'], label: 'Work Tree' },
-      { keys: ['KeyB'], label: 'Shop' },
+      { keys: ['KeyB'], label: 'SUPPLY CO.' },
       { keys: ['KeyO'], label: 'Order Board' },
       { keys: ['Escape'], label: 'Pause' },
     ],

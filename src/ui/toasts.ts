@@ -35,7 +35,7 @@ export class Toasts implements UIPart {
       const node = NODE_BY_ID.get(e.id);
       if (!node || node.kind !== 'plan') return;
       const shop = ctx.keyLabel('KeyB');
-      this.push(`${node.name} unlocked - buy it in the Shop (${shop})`, 'good', node.icon);
+      this.push(`${node.name} unlocked - buy it at SUPPLY CO. (${shop})`, 'good', node.icon);
     });
     env.listen('tool:bought', (e) => {
       if (e.tool === 'wheelbarrow') {

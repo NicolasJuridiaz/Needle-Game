@@ -64,11 +64,11 @@ export const WORLD = {
    */
   intake: { x: -32, z0: 1, z1: 5, beltY: 0.45, transitSeconds: 1.8, dropPadX1: -29.6 },
   /** Store kiosk (opens the Shop with E; the B key still works everywhere). Cells reserved like the intake. */
-  store: { x: -32, z0: -1, z1: 1 },
+  store: { x: -32, z0: -3, z1: 1 },
 
   /** Wall-mounted props (not grid buildings). */
   props: {
-    orderBoard: { x: -31.8, y: 2.2, z: -3, facing: 0 },
+    orderBoard: { x: -31.8, y: 2.2, z: -5, facing: 0 },
     needleCase: { x: -31.8, y: 2.0, z: -9, facing: 0 },
   },
 } as const;

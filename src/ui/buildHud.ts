@@ -115,7 +115,7 @@ export class BuildHud implements UIPart {
       setIcon(this.itemIc, 'place');
       this.itemIc.style.setProperty('--cat', 'var(--hay)');
       this.itemName.set('Nothing selected');
-      this.itemSub.set(`Open the Shop (${ctx.keyLabel('KeyB')}) to pick a building`);
+      this.itemSub.set(`Open SUPPLY CO. (${ctx.keyLabel('KeyB')}) to pick a building`);
     }
 
     // rotation (place / move with an item)

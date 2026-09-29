@@ -54,7 +54,7 @@ export class ClickToPlay implements UIPart {
       `<span>${keycapHTML('LMB', L)} Dig</span>`,
       `<span>${keycapHTML('KeyE', L)} Sell / use</span>`,
       `<span>${keycapHTML('KeyT', L)} Work Tree</span>`,
-      `<span>${keycapHTML('KeyB', L)} Shop</span>`,
+      `<span>${keycapHTML('KeyB', L)} SUPPLY CO.</span>`,
       `<span>${keycapHTML('KeyQ', L)} Build</span>`,
       `<span>${keycapHTML('Escape', L)} Pause</span>`,
     ].join('');

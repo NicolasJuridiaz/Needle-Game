@@ -65,7 +65,7 @@ const tier = (anim: (t: number) => Record<string, number>, lv: number) => (t: nu
 
 const ENTRIES: Entry[] = [
   // row 0 — factory & extraction
-  { label: 'sellStation', sub: 'Market Chute', kind: 'sellStation', anim: (t) => ({ pulse: pulse(t, 1.3) }), row: 0 },
+  { label: 'sellStation', sub: 'SELL HAY', kind: 'sellStation', anim: (t) => ({ pulse: pulse(t, 1.3) }), row: 0 },
   { label: 'hopper', kind: 'hopper', anim: (t) => ({ fill: wave(t, 0.6), out: Math.sin(t) > 0 ? 1 : 0 }), row: 0 },
   { label: 'pistonRake', kind: 'pistonRake', anim: rakeAnim(0), row: 0 },
   { label: 'pistonRake Lv3', kind: 'pistonRake', anim: tier(rakeAnim(0), 3), row: 0 },

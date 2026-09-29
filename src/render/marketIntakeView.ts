@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { WORLD } from '../config/world';
+import { SupplyStall } from './supplyStall';
+import { getSupplyBounds } from '../sim/supplyBounds';
 import type { IntakeLoad } from '../sim/machines/sellStation';
 import type { Sim } from '../sim/sim';
 import { createConveyorGeometry } from './models/index';
@@ -10,13 +12,13 @@ import { COLORS, paintGeometry, paletteMaterial } from './palette';
 import { beltTexture } from './textures';
 
 /**
- * Market intake + Store kiosk (render only; the sim side is SellStation.depositIntake / WORLD.intake / WORLD.store).
+ * SELL HAY intake + SUPPLY CO. stand (render only; the sim side is SellStation.depositIntake / WORLD.intake / WORLD.store).
  *   - Intake belt: 4 straight conveyor tiles (the SAME tile geometry and belt texture as player-built belts, so it
- *     reads as "a conveyor"), running south along the west wall into the Market Chute. 2 draw calls (instanced).
+ *     reads as "a conveyor"), running south along the west wall into SELL HAY. 2 draw calls (instanced).
  *   - Hay bundles riding it: ONE InstancedMesh (max MAX_BUNDLES), 1-3 chunky bundles per dropped load, whatever the
  *     logical amount. The money still comes from the sim when a load arrives.
  *   - Drop-zone highlight (shown while the player aims at the belt carrying something) and a "SELL HAY" sign.
- *   - Store kiosk: a small stall (one merged mesh) + sign. Opens the Shop with E (game layer).
+ *   - SUPPLY CO.: timber counter, displayed tools and live price board. Opens the catalog with E.
  */
 
 const MAX_BUNDLES = 30;
@@ -28,26 +30,6 @@ const _s = new THREE.Vector3();
 const _e = new THREE.Euler();
 const _c = new THREE.Color();
 
-/** Canvas sign (big bold label + optional icon glyph). Cheap: one small texture per sign. */
-function signTexture(text: string, bg: string, fg: string, sub?: string): THREE.CanvasTexture | null {
-  if (typeof document === 'undefined') return null;
-  const c = document.createElement('canvas');
-  c.width = 512; c.height = 160;
-  const g = c.getContext('2d');
-  if (!g) return null;
-  g.fillStyle = bg; g.fillRect(0, 0, 512, 160);
-  g.strokeStyle = fg; g.lineWidth = 10; g.strokeRect(8, 8, 496, 144);
-  g.fillStyle = fg;
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.font = `900 ${sub ? 70 : 84}px Rubik, "Segoe UI", system-ui, sans-serif`;
-  g.fillText(text, 256, sub ? 64 : 82);
-  if (sub) { g.font = '700 34px Rubik, "Segoe UI", system-ui, sans-serif'; g.fillText(sub, 256, 124); }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
-
 export class MarketIntakeView {
   readonly root = new THREE.Group();
   private readonly beltMap: THREE.Texture;
@@ -57,6 +39,15 @@ export class MarketIntakeView {
   private readonly disposables: { dispose(): void }[] = [];
   private scroll = 0;
   private flash = 0;
+  private readonly supply = new SupplyStall();
+  private boundSim: Sim | null = null;
+  private unbindSale: (() => void) | null = null;
+  private saleValue = 0;
+  private saleAge = Infinity;
+  private displayDirty = true;
+  private displayCooldown = 0;
+  private readonly receiptCanvas = document.createElement('canvas');
+  private readonly receiptMap: THREE.CanvasTexture;
 
   constructor(scene: THREE.Scene) {
     this.root.name = 'marketIntake';
@@ -100,12 +91,8 @@ export class MarketIntakeView {
     p.box('paint', [0.06, 0.2, TILE_COUNT - 0.1], shade(COLORS.logistics, 0.8), { pos: [I.x + 0.07, I.beltY + 0.12, (I.z0 + z1) / 2] });
     // drop pad painted on the floor next to the belt (yellow/black)
     const padW = I.dropPadX1 - (I.x + 1.1), padX = I.x + 1.1 + padW / 2; // part of the drop zone (INTAKE_AIM_BOX)
-    p.box('paint', [padW, 0.012, TILE_COUNT - 0.4], 0xf2c14e, { pos: [padX, 0.006, (I.z0 + z1) / 2] });
+    p.box('paint', [padW, 0.012, TILE_COUNT - 0.4], 0xb5a375, { pos: [padX, 0.006, (I.z0 + z1) / 2] });
     p.box('paint', [padW - 0.2, 0.014, TILE_COUNT - 0.8], 0x2a2620, { pos: [padX, 0.007, (I.z0 + z1) / 2] });
-    // sign gantry: the belt stands in the loading doorway, so the sign hangs on its own two posts (not on air)
-    const sz = (I.z0 + z1) / 2 - 0.3;
-    for (const dz of [-1.08, 1.08]) p.box('paint', [0.08, 2.72, 0.08], 0x2b2f33, { pos: [I.x + 0.07, 1.36, sz + dz] });
-    p.box('paint', [0.05, 0.72, 2.12], 0x2b2f33, { pos: [I.x + 0.07, 2.35, sz] });
     const built = p.build();
     if (built.main) {
       const mesh = new THREE.Mesh(built.main, modelMaterial());
@@ -113,7 +100,7 @@ export class MarketIntakeView {
       this.root.add(mesh);
       this.disposables.push(built.main);
     }
-    this.addSign('SELL HAY', '#1b1a17', '#f2c14e', 'drop it on the belt', I.x + 0.1, 2.35, sz, 2.0, 0.62);
+
 
     // ----- aim highlight (a glowing outline box just above the belt)
     const hg = new THREE.BoxGeometry(1.02, 0.36, TILE_COUNT + 0.02);
@@ -136,55 +123,55 @@ export class MarketIntakeView {
     for (let k = 0; k < MAX_BUNDLES; k++) this.bundles.setColorAt(k, _c.setRGB(1, 1, 1));
     this.root.add(this.bundles);
 
-    this.buildStore();
-    scene.add(this.root);
-  }
-
-  private addSign(text: string, bg: string, fg: string, sub: string | undefined, x: number, y: number, z: number, w: number, h: number): void {
-    const tex = signTexture(text, bg, fg, sub);
-    const geo = new THREE.PlaneGeometry(w, h);
-    const mat = tex ? new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }) : new THREE.MeshBasicMaterial({ color: bg });
-    const sign = new THREE.Mesh(geo, mat);
-    sign.position.set(x, y, z);
-    sign.rotation.y = Math.PI / 2; // faces +X (into the hall)
-    this.root.add(sign);
-    this.disposables.push(geo, mat);
-    if (tex) this.disposables.push(tex);
-  }
-
-  /** Store kiosk: counter + back board + striped awning, against the west wall. */
-  private buildStore(): void {
     const S = WORLD.store;
-    const x0 = S.x, zc = (S.z0 + S.z1) / 2, len = S.z1 - S.z0 - 0.45; // clear of the door post (z = 1) and the order board
-    const TEAL = 0x2f7f8f, TEAL_DK = shade(0x2f7f8f, 0.7), WHITE = 0xf1ece0, WOOD = 0x9a6a3c;
-    const p = new Parts();
-    // counter (front at x0 + 0.95)
-    p.bev('paint', [0.8, 1.0, len - 0.1], 0.03, TEAL, { pos: [x0 + 0.55, 0.5, zc] });
-    p.bev('paint', [0.9, 0.07, len], 0.02, WOOD, { pos: [x0 + 0.57, 1.04, zc] });
-    p.box('paint', [0.02, 0.5, len - 0.4], TEAL_DK, { pos: [x0 + 0.96, 0.5, zc] });
-    // back board + posts
-    p.box('paint', [0.08, 2.3, len], shade(TEAL, 0.85), { pos: [x0 + 0.06, 1.15, zc] });
-    for (const dz of [-len / 2 + 0.06, len / 2 - 0.06]) p.box('paint', [0.07, 2.35, 0.07], WHITE, { pos: [x0 + 0.95, 1.18, zc + dz] });
-    // striped awning (sloped towards the hall)
-    const stripes = 6;
-    for (let k = 0; k < stripes; k++) {
-      p.box('paint', [1.2, 0.05, len / stripes], k % 2 ? WHITE : TEAL, { pos: [x0 + 0.62, 2.42, zc - len / 2 + (k + 0.5) * (len / stripes)], rot: [0, 0, -0.22] });
-    }
-    // a few "goods" on the counter: tool silhouettes as simple blocks
-    p.box('metal', [0.1, 0.34, 0.1], 0x8a949a, { pos: [x0 + 0.5, 1.25, zc - 0.5] });
-    p.cyl('paint', 0.12, 0.14, 0.2, 0xd4523b, { pos: [x0 + 0.5, 1.18, zc + 0.45] }, 10);
-    const built = p.build();
-    if (built.main) {
-      const mesh = new THREE.Mesh(built.main, modelMaterial());
-      mesh.castShadow = true; mesh.receiveShadow = true;
-      this.root.add(mesh);
-      this.disposables.push(built.main);
-    }
-    this.addSign('STORE', '#1f5f6b', '#fff3d0', 'tools & upgrades', x0 + 0.2, 2.95, zc, 1.6, 0.5);
+    this.supply.root.position.set(S.x, 0, (S.z0 + S.z1) / 2);
+    this.root.add(this.supply.root);
+    // A real cash readout on the register, fed only by the existing sale event.
+    this.receiptCanvas.width = 384; this.receiptCanvas.height = 112;
+    this.receiptMap = new THREE.CanvasTexture(this.receiptCanvas);
+    this.receiptMap.colorSpace = THREE.SRGBColorSpace;
+    const receiptMat = new THREE.MeshBasicMaterial({ map: this.receiptMap, toneMapped: false });
+    const receiptGeo = new THREE.PlaneGeometry(.33, .096);
+    const receipt = new THREE.Mesh(receiptGeo, receiptMat);
+    receipt.rotation.y = Math.PI / 2;
+    receipt.position.set(WORLD.fixed.sellStation.x + 1.5 + .94, 1.39, WORLD.fixed.sellStation.z + 2 + .22);
+    this.root.add(receipt);
+    this.disposables.push(this.receiptMap, receiptMat, receiptGeo);
+    // Repeat the actual receipt in the scale's inset window (same texture and material).
+    const scaleReadoutGeo = new THREE.PlaneGeometry(.264, .070);
+    const scaleReadout = new THREE.Mesh(scaleReadoutGeo, receiptMat);
+    scaleReadout.rotation.y = Math.PI / 2;
+    scaleReadout.position.set(WORLD.fixed.sellStation.x + 1.5 + 1.166, 1.741, WORLD.fixed.sellStation.z + 2 - 1.13);
+    this.root.add(scaleReadout); this.disposables.push(scaleReadoutGeo);
+    scene.add(this.root);
   }
 
   /** Per frame: belt scroll, bundles from the chute's intake loads, highlight. */
   update(dt: number, sim: Sim, aimed: boolean, carrying: boolean): void {
+    this.supply.update(sim);
+    const supplyBounds = getSupplyBounds(sim);
+    this.supply.root.position.z = (supplyBounds.z0 + supplyBounds.z1) / 2;
+    this.supply.root.scale.z = (supplyBounds.z1 - supplyBounds.z0) / 4;
+    if (this.boundSim !== sim) {
+      this.unbindSale?.(); this.boundSim = sim;
+      this.saleValue = 0; this.saleAge = Infinity; this.displayDirty = true;
+      this.unbindSale = sim.events.on('sale', e => {
+        this.saleValue = this.saleAge < .35 ? this.saleValue + e.value : e.value;
+        this.saleAge = 0; this.displayDirty = true;
+      });
+    }
+    this.saleAge += dt;
+    this.displayCooldown -= dt;
+    if (this.displayDirty && this.displayCooldown <= 0) {
+      const g = this.receiptCanvas.getContext('2d');
+      if (g) {
+        g.fillStyle = '#17221c'; g.fillRect(0, 0, 384, 112);
+        g.fillStyle = '#dfdfaa'; g.font = 'bold 64px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(`$${this.saleValue.toFixed(2)}`, 192, 58, 370);
+        this.receiptMap.needsUpdate = true;
+      }
+      this.displayDirty = false; this.displayCooldown = .1;
+    }
     const I = WORLD.intake;
     const len = I.z1 - I.z0;
     const speed = len / I.transitSeconds;
@@ -227,6 +214,8 @@ export class MarketIntakeView {
   }
 
   dispose(): void {
+    this.unbindSale?.();
+    this.supply.dispose();
     for (const d of this.disposables) d.dispose();
     this.root.removeFromParent();
   }
@@ -248,3 +237,9 @@ export function rayBox(o: { x: number; y: number; z: number }, d: { x: number; y
 /** Aim boxes (world metres) of the intake drop zone (belt + drop pad in front of it) and of the Store kiosk. */
 export const INTAKE_AIM_BOX = { x0: WORLD.intake.x, x1: WORLD.intake.dropPadX1, y0: 0, y1: WORLD.intake.beltY + 0.7, z0: WORLD.intake.z0, z1: WORLD.intake.z1 };
 export const STORE_AIM_BOX = { x0: WORLD.store.x, x1: WORLD.store.x + 1.05, y0: 0, y1: 2.6, z0: WORLD.store.z0 + 0.2, z1: WORLD.store.z1 - 0.2 };
+
+/** The legacy compact variant uses the same bounds for aiming, collision and rendering. */
+export function storeAimBox(sim: Sim): typeof STORE_AIM_BOX {
+  const s = getSupplyBounds(sim);
+  return { ...STORE_AIM_BOX, z0: s.z0 + .2, z1: s.z1 - .2 };
+}

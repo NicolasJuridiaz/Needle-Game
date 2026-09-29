@@ -350,8 +350,8 @@ export function createSignAtlas(): THREE.CanvasTexture {
     c.fillStyle = '#1f5d8c'; roundRect(c, r.x + 4, r.y + 4, r.w - 8, r.h - 8, 14); c.fill();
     c.strokeStyle = '#f4efe2'; c.lineWidth = 5; roundRect(c, r.x + 14, r.y + 14, r.w - 28, r.h - 28, 10); c.stroke();
     c.fillStyle = '#f4efe2';
-    fitFont(c, 'MARKET CHUTE  ▸  TRUCK', r.w - 70, 52);
-    c.fillText('MARKET CHUTE  ▸  TRUCK', r.x + r.w / 2, r.y + r.h / 2 + 2);
+    fitFont(c, 'SELL HAY  ▸  TRUCK', r.w - 70, 52);
+    c.fillText('SELL HAY  ▸  TRUCK', r.x + r.w / 2, r.y + r.h / 2 + 2);
     grime(c, r, rng, 12);
   }
   // Keep out (construction) sign.
