@@ -49,7 +49,7 @@ export class MachineTooltip implements UIPart {
   private slow = 0;
 
   constructor(private readonly env: PartEnv, parent: HTMLElement) {
-    const el = (this.el = h('div', 'pn-tip', parent));
+    const el = (this.el = h('div', 'pn-tip pn-rail pn-rail--machine', parent));
     this.visible = new ClassSlot(el, 'is-on');
     const head = h('div', 'pn-tip-head', el);
     this.ic = h('span', 'pn-tip-ic', head);
@@ -112,4 +112,3 @@ export class MachineTooltip implements UIPart {
 
   destroy(): void { this.el.remove(); }
 }
-

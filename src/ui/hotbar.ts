@@ -26,7 +26,7 @@ export class Hotbar implements UIPart {
   private slow = 0;
 
   constructor(private readonly env: PartEnv, parent: HTMLElement) {
-    this.el = h('div', 'pn-hotbar', parent);
+    this.el = h('div', 'pn-hotbar pn-rail pn-rail--tools', parent);
     this.visible = new ClassSlot(this.el, 'is-on');
     this.name = h('div', 'pn-hotbar-name', this.el);
     const row = h('div', 'pn-hotbar-row', this.el);

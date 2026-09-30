@@ -42,7 +42,7 @@ export class BuildHud implements UIPart {
   private slow = 0;
 
   constructor(private readonly env: PartEnv, parent: HTMLElement) {
-    const el = (this.el = h('div', 'pn-build', parent));
+    const el = (this.el = h('div', 'pn-build pn-rail pn-rail--build', parent));
     this.visible = new ClassSlot(el, 'is-on');
     const tabs = h('div', 'pn-build-tabs', el);
     for (const t of TOOLS) {
@@ -171,4 +171,3 @@ export class BuildHud implements UIPart {
 
   destroy(): void { this.el.remove(); }
 }
-

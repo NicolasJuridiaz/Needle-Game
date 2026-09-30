@@ -7,10 +7,12 @@ import type { GameMode } from '../ui/context';
  * Contextual onboarding: one short line at a time, shown only while it is relevant.
  * No modal tutorials. Each hint resolves itself when the player does the thing.
  */
-export interface Hint { id: string; text: string; key?: string; /** world target for the waypoint arrow */ target?: { x: number; y: number; z: number } }
+export interface Hint { id: string; title: string; text: string; key?: string; /** world target for the waypoint arrow */ target?: { x: number; y: number; z: number } }
 
 interface HintRule {
   id: string;
+  /** Short stage label. The HUD renders it above the action so the player understands why it matters. */
+  title: string;
   /** Should this hint be offered now? */
   when: (g: HintEnv) => boolean;
   /** Is the hint satisfied (never show again)? */
@@ -39,84 +41,98 @@ const sellTarget = (_g: HintEnv) => {
 
 const RULES: HintRule[] = [
   {
-    id: 'dig', key: 'LMB',
+    id: 'dig', title: 'Start with hay', key: 'LMB',
     when: () => true,
     done: (g) => g.sim.progress.stats.hayExtractedManual > 0,
-    text: () => 'Hold LMB on the haystack to grab hay',
+    text: () => 'Hold LMB on the haystack to fill your carry meter',
   },
   {
-    id: 'sell', key: 'E',
+    id: 'sell', title: 'Sell the load', key: 'E',
     when: (g) => g.sim.player.carry.weight() >= Math.min(10, carryCapacity(g.sim) * 0.5),
     done: (g) => g.sim.progress.stats.firstSaleAt >= 0,
-    text: () => 'Carry it to the SELL HAY belt and press E to drop it',
+    text: () => 'Take the hay to the SELL HAY intake and deposit it for money',
     target: sellTarget,
   },
   {
-    id: 'tree', key: 'KeyT',
+    id: 'tree', title: 'Spend the Work Point', key: 'KeyT',
     when: (g) => g.sim.progress.wp > 0,
     done: (g) => g.flags.has('workTreeOpened') || g.sim.progress.nodes.size > 0,
-    text: (g) => `You earned a Work Point! Press ${g.label('KeyT')} to open the Work Tree`,
+    text: (g) => `Work Points unlock plans. Press ${g.label('KeyT')} to open the Work Tree`,
   },
   {
-    id: 'shop', key: 'KeyB',
+    id: 'shop', title: 'Buy the unlocked tool', key: 'KeyB',
     when: (g) => [...g.sim.progress.nodes.keys()].some((id) => id === 'p_shovel' || id === 'p_bucket'),
     done: (g) => g.sim.progress.ownedTools.size > 1,
-    text: (g) => `New plans! Buy it at SUPPLY CO. next to the belt (or press ${g.label('KeyB')})`,
+    text: (g) => `Plans make items available; money buys them at SUPPLY CO. Press ${g.label('KeyB')}`,
   },
   {
-    id: 'equip',
+    id: 'equip', title: 'Equip the new tool',
     when: (g) => g.sim.progress.ownedTools.size > 1,
     done: (g) => g.sim.player.equipped !== 'hands' || g.flags.has('equippedTool'),
-    text: () => 'Press 2-6 to switch tools. Better tools dig much faster',
+    text: () => 'Use 2–6 to switch tools. The highlighted slot is currently equipped',
   },
   {
-    id: 'orders', key: 'KeyO',
+    id: 'orders', title: 'Take the next contract', key: 'KeyO',
     when: (g) => g.sim.progress.stats.firstSaleAt >= 0 && g.sim.progress.orders.some((o) => o.completed),
     done: (g) => g.flags.has('ordersOpened'),
-    text: (g) => `Orders pay Work Points. Press ${g.label('KeyO')} to see all of them`,
+    text: (g) => `Orders are the main source of Work Points. Press ${g.label('KeyO')} to see the board`,
     maxTime: 12,
   },
   {
-    id: 'detector',
+    id: 'systems', title: 'How progression works',
+    when: (g) => g.sim.progress.stats.firstSaleAt >= 0 && g.sim.progress.nodes.size > 0,
+    done: (g) => g.flags.has('ordersOpened') && g.flags.has('workTreeOpened') && g.flags.has('shopOpened'),
+    text: () => 'Orders earn Work Points → Work Tree unlocks plans → SUPPLY CO. sells the unlocked items',
+    maxTime: 16,
+  },
+  {
+    id: 'detector', title: 'Track a buried needle',
     when: (g) => g.sim.player.equipped === 'detector',
     done: (g) => g.sim.progress.needlesFound.length > 0,
     text: () => 'Follow the beeps: faster = closer. Dig where the signal peaks',
     maxTime: 20,
   },
   {
-    id: 'build', key: 'KeyQ',
+    id: 'build', title: 'Start automation', key: 'KeyQ',
     when: (g) => g.sim.buildingsOfType('sellStation').length > 0 && [...g.sim.progress.nodes.keys()].some((id) => id === 'f_generator' || id === 'x_hopper'),
     done: (g) => g.sim.progress.stats.machinesBuilt > 0,
-    text: (g) => `Buy a machine at SUPPLY CO. (${g.label('KeyB')}), place it with LMB, rotate with ${g.label('KeyR')}`,
+    text: (g) => `Buy a machine with ${g.label('KeyB')}, then enter Build Mode. LMB places; ${g.label('KeyR')} rotates`,
   },
   {
-    id: 'feed', key: 'E',
+    id: 'machine', title: 'Read the machine rail',
+    when: (g) => g.mode === 'play' && g.sim.progress.stats.machinesBuilt > 0,
+    done: (g) => g.flags.has('machineInspected'),
+    text: () => 'Aim at a machine: its status and the action needed appear at bottom-right',
+    maxTime: 18,
+  },
+  {
+    id: 'feed', title: 'Fuel the generator', key: 'E',
     when: (g) => g.sim.buildingsOfType('hayGenerator').some((b) => b.status === 'noFuel'),
     done: (g) => g.sim.progress.stats.hayBurned > 150,
-    text: () => 'Generators burn hay. Carry hay to the firebox and press E',
+    text: () => 'Generators burn hay to power machines. Carry hay to the firebox',
   },
   {
-    id: 'rakeTray', key: 'E',
+    id: 'rakeTray', title: 'Clear the machine output', key: 'E',
     when: (g) => g.sim.buildingsOfType('pistonRake').some((b) => b.status === 'outputBlocked'),
     done: (g) => g.sim.progress.isUnlocked('l_conveyor') && g.sim.ownedCount('conveyor') > 0,
     text: () => 'The rake tray is full: empty it with E, or connect a conveyor',
     maxTime: 15,
   },
   {
-    id: 'belt',
+    id: 'belt', title: 'Connect the line',
     when: (g) => g.sim.progress.isUnlocked('l_conveyor') && g.mode === 'build',
     done: (g) => g.sim.ownedCount('conveyor') >= 3,
-    text: () => 'Conveyor: click a start cell, then an end cell. Curves are automatic',
+    text: () => 'Choose Belt, click the start, then the destination. Curves route automatically',
   },
   {
-    id: 'power',
+    id: 'power', title: 'Power is overloaded',
     when: (g) => g.sim.power.totalDemand > g.sim.power.totalSupply + 0.5 && g.sim.power.totalSupply > 0,
     done: () => false,
     text: () => 'Power overload: machines run slower. Add or upgrade generators',
     maxTime: 10,
   },
   {
-    id: 'needleSlip',
+    id: 'needleSlip', title: 'Protect needles in the line',
     when: (g) => g.sim.progress.stats.needlesReturned > 0 && !g.sim.progress.isUnlocked('d_scanner'),
     done: (g) => g.sim.progress.isUnlocked('d_scanner'),
     text: () => 'Machines hide needles inside the hay. Put a Needle Scanner on your belt',
@@ -156,7 +172,7 @@ export class Hints {
     }
     if (!this.current) return null;
     const r = this.current;
-    return { id: r.id, text: r.text(env), key: r.key, target: r.target?.(env) };
+    return { id: r.id, title: r.title, text: r.text(env), key: r.key, target: r.target?.(env) };
   }
 
   doneIds(): string[] { return [...this.doneSet]; }

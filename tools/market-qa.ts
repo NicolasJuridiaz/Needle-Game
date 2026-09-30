@@ -16,6 +16,12 @@ import type { GameMode } from '../src/ui/context';
 // This entry is served by Vite development only; it is not an input to the production build.
 if (!import.meta.env.DEV) throw new Error('Market QA is available only on the development server.');
 
+let consoleErrors = 0;
+const reportConsoleError = console.error.bind(console);
+console.error = (...args: unknown[]) => { consoleErrors++; reportConsoleError(...args); };
+window.addEventListener('error', () => { consoleErrors++; });
+window.addEventListener('unhandledrejection', () => { consoleErrors++; });
+
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
   getString(key: string): string | null { return this.values.get(key) ?? null; }
@@ -164,6 +170,7 @@ function updateMetrics(): void {
     money: Math.round(p.money * 100) / 100, haySold: Math.round(p.stats.haySold * 100) / 100,
     shovelOwned: p.ownedTools.has('shovel'), intakeCount: intakeLoads().length,
     fps: Math.round(game.getFps()), quality: game.settings.quality,
+    consoleErrors,
     stressNeedleSweep: Number(stressNeedleSweep.toFixed(3)),
     scaleAngle: Number((qa.renderer.scene.getObjectByName('seller-scale-needle')?.rotation.x ?? 0).toFixed(3)),
     width: qa.renderer.resolution().cssWidth, height: qa.renderer.resolution().cssHeight,

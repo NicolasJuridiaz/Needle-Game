@@ -97,7 +97,7 @@ export interface UIContext {
   /** Layout-aware key label for a KeyboardEvent.code ("KeyW" -> "W" on QWERTY, "Z" on AZERTY). */
   keyLabel(code: string): string;
   /** First-time contextual hint to show (onboarding), or null. */
-  getHint(): { text: string; key?: string } | null;
+  getHint(): { id: string; title: string; text: string; key?: string } | null;
   /** Is the game running on a touch-only device (unsupported notice). */
   isTouchOnly(): boolean;
   /** Welcome Back card after a real absence (read-only), null otherwise. Optional for test doubles. */

@@ -96,9 +96,11 @@ export class Hud implements UIPart {
   // hint / fps / saved
   private readonly hint: HTMLElement;
   private readonly hintVisible: ClassSlot;
+  private readonly hintTitle: TextSlot;
   private readonly hintText: TextSlot;
   private readonly hintKey: HTMLElement;
   private hintKeyValue = '';
+  private hintIdValue = '';
   private readonly fps: HTMLElement;
   private readonly fpsVisible: ClassSlot;
   private readonly fpsText: TextSlot;
@@ -112,7 +114,7 @@ export class Hud implements UIPart {
 
     // ----- resources (top-left)
     // one plate: small muted label over a heavier value; WP only appears once the player has earned some
-    const res = h('div', 'pn-res', el);
+    const res = h('div', 'pn-res pn-rail pn-rail--economy', el);
     const resRow = (cls: string, ic: string, label: string): [HTMLElement, TextSlot] => {
       const row = h('div', `pn-res-row ${cls}`, res);
       row.innerHTML = `<span class="pn-res-ic">${icon(ic)}</span>`;
@@ -133,7 +135,7 @@ export class Hud implements UIPart {
     this.wp.text.set(fmtInt(Math.floor(p.wp)));
 
     // ----- goals column (top-right): needles, current order, power (only once a generator exists)
-    const tr = h('div', 'pn-tr', el);
+    const tr = h('div', 'pn-tr pn-rail pn-rail--mission', el);
     const nb = h('div', 'pn-needles', tr);
     const head = h('div', 'pn-needles-head', nb);
     head.innerHTML = `<span class="pn-needles-ic">${icon('needle')}</span><span class="pn-needles-label">Needles</span>`;
@@ -175,7 +177,7 @@ export class Hud implements UIPart {
     this.crossTarget = new ClassSlot(cross, 'is-target');
 
     // ----- player strip (bottom centre, above the hotbar): stamina + carried hay + wheelbarrow, each only when relevant
-    const player = h('div', 'pn-player', el);
+    const player = h('div', 'pn-player pn-rail pn-rail--player', el);
     const meter = (cls: string, ic: string, label: string): { row: HTMLElement; top: HTMLElement; val: TextSlot; fill: HTMLElement } => {
       const row = h('div', `pn-player-row ${cls}`, player);
       row.innerHTML = `<span class="pn-player-ic">${icon(ic)}</span>`;
@@ -221,8 +223,10 @@ export class Hud implements UIPart {
     this.hint = h('div', 'pn-hint', el);
     this.hintVisible = new ClassSlot(this.hint, 'is-on');
     this.hint.innerHTML = `<span class="pn-hint-ic">${icon('info')}</span>`;
+    const hintCopy = h('span', 'pn-hint-copy', this.hint);
+    this.hintTitle = new TextSlot(h('span', 'pn-hint-title', hintCopy));
+    this.hintText = new TextSlot(h('span', 'pn-hint-text', hintCopy));
     this.hintKey = h('span', 'pn-hint-key', this.hint);
-    this.hintText = new TextSlot(h('span', 'pn-hint-text', this.hint));
 
     // ----- fps + saved (bottom-left)
     this.fps = h('div', 'pn-fps', el);
@@ -340,7 +344,7 @@ export class Hud implements UIPart {
     const active = prog.activeOrders();
     const o = active.length ? active[0] : null;
     const def = o ? ORDER_BY_ID[o.id] : undefined;
-    this.orderVisible.set(!!def && mode === 'play');
+    this.orderVisible.set(!!def && HUD_MODES.has(mode));
     if (o && def) {
       const t = orderProgress(def, o.progress);
       this.orderTitle.set(def.title);
@@ -376,6 +380,11 @@ export class Hud implements UIPart {
     const hint = ctx.getHint();
     this.hintVisible.set(!!hint);
     if (hint) {
+      if (hint.id !== this.hintIdValue) {
+        this.hintIdValue = hint.id;
+        replayClass(this.hint, 'is-step');
+      }
+      this.hintTitle.set(hint.title);
       this.hintText.set(hint.text);
       const key = hint.key ?? '';
       if (key !== this.hintKeyValue) {
@@ -432,4 +441,3 @@ function approach(shown: number, target: number, k: number): number {
   if (Math.abs(d) < 0.5) return target;
   return shown + d * Math.max(k, Math.min(1, 0.6 / Math.abs(d)));
 }
-

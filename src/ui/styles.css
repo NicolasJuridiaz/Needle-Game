@@ -1277,3 +1277,399 @@
 .pn-consent-btn:hover { background: var(--bg-4); border-color: var(--line-3); }
 .pn-set-link { display: inline-block; margin: 0.1em 0 0.3em; font-size: 0.85em; color: var(--acc); text-decoration: underline; }
 .pn-toggle:disabled { opacity: 0.4; cursor: default; }
+
+/* =====================================================================================
+   Instrument Rails — selected HUD direction (B)
+   One surface per information zone. Hierarchy comes from alignment, rules and type;
+   individual readings do not become independent floating cards.
+   ===================================================================================== */
+
+.pn-ui {
+  --rail-bg: rgba(14, 16, 16, 0.88);
+  --rail-line: rgba(224, 214, 190, 0.18);
+  --rail-rule: #d6a24a;
+  --rail-cut: 6px;
+  --rail-shadow: 0 0.35em 0.9em rgba(0, 0, 0, 0.34);
+}
+
+.pn-rail {
+  background: var(--rail-bg);
+  border: 1px solid var(--rail-line);
+  border-radius: 0;
+  box-shadow: var(--rail-shadow);
+  clip-path: polygon(var(--rail-cut) 0, 100% 0, 100% calc(100% - var(--rail-cut)), calc(100% - var(--rail-cut)) 100%, 0 100%, 0 var(--rail-cut));
+}
+.pn-rail::before {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  background: var(--rail-rule);
+}
+
+/* Economy: stacked readings share one left rail. */
+.pn-rail--economy {
+  left: calc(var(--u) * 0.9);
+  top: calc(var(--u) * 0.85);
+  width: min(15vw, calc(var(--u) * 14.5));
+  min-width: calc(var(--u) * 11.5);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0.38em 0.65em 0.42em;
+}
+.pn-rail--economy::before { left: 0; top: 0; bottom: 0; width: 3px; }
+.pn-rail--economy .pn-res-row { min-height: calc(var(--u) * 2.35); padding: 0.25em 0; }
+.pn-rail--economy .pn-res-row + .pn-res-row { border: 0; border-top: 1px solid var(--line); }
+.pn-rail--economy .pn-res-body { flex: 1; display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0.25em 0.6em; }
+.pn-rail--economy .pn-res-label { grid-column: 2; grid-row: 1; align-self: center; }
+.pn-rail--economy .pn-res-val { grid-column: 1; grid-row: 1; font-size: calc(var(--u) * 1.28); font-weight: 700; }
+.pn-rail--economy .pn-res-wp .pn-res-val { font-size: calc(var(--u) * 1.08); }
+.pn-rail--economy .pn-res-ic { font-size: calc(var(--u) * 0.94); }
+.pn-rail--economy .pn-floats { left: 0.7em; top: calc(100% + 0.3em); }
+
+/* Mission: Needles, Order and Power read as sections of one instrument. */
+.pn-rail--mission {
+  right: calc(var(--u) * 0.9);
+  top: calc(var(--u) * 0.85);
+  width: min(18vw, calc(var(--u) * 17));
+  gap: 0;
+  overflow: hidden;
+}
+.pn-rail--mission::before { right: 0; top: 0; bottom: 0; width: 3px; }
+.pn-rail--mission > .pn-needles,
+.pn-rail--mission > .pn-order,
+.pn-rail--mission > .pn-power {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+  padding: 0.55em 0.72em;
+}
+.pn-rail--mission > .pn-order,
+.pn-rail--mission > .pn-power { border-top: 1px solid var(--line-2); }
+.pn-rail--mission > .pn-order:hover { background: rgba(255, 255, 255, 0.035); }
+.pn-rail--mission .pn-needle-slot {
+  height: calc(var(--u) * 0.72);
+  border-radius: 0;
+  color: transparent;
+  background: rgba(255, 255, 255, 0.055);
+  border-color: var(--line-2);
+}
+.pn-rail--mission .pn-needle-slot .pn-ic { display: none; }
+.pn-rail--mission .pn-needle-slot.is-found { background: var(--acc); border-color: var(--acc); }
+.pn-rail--mission .pn-order-head,
+.pn-rail--mission .pn-power-head { margin-bottom: 0.28em; }
+.pn-rail--mission .pn-order-title { font-weight: 650; }
+.pn-rail--mission .pn-order-bar,
+.pn-rail--mission .pn-power-bar { height: 0.26em; }
+.pn-power.is-over { position: relative; border-color: transparent; }
+.pn-power.is-over::after { content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 3px; background: var(--bad); }
+
+/* Player telemetry: a single contextual bottom-left rail; empty rail disappears. */
+.pn-rail--player {
+  left: calc(var(--u) * 0.9);
+  bottom: calc(var(--u) * 0.85);
+  transform: none;
+  width: min(19vw, calc(var(--u) * 18));
+  min-width: calc(var(--u) * 13);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0.38em 0.65em 0.4em;
+}
+.pn-rail--player::before { left: 0; top: 0; bottom: 0; width: 3px; background: var(--ink-3); }
+.pn-rail--player:not(:has(.pn-player-row.is-on)) { display: none; }
+.pn-rail--player .pn-player-row {
+  width: 100%;
+  height: auto;
+  min-height: calc(var(--u) * 2.2);
+  padding: 0.3em 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.pn-rail--player .pn-player-row + .pn-player-row.is-on { border-top: 1px solid var(--line); }
+.pn-rail--player .pn-player-body { flex: 1; }
+.pn-rail--player .pn-bar { width: 100%; height: 0.25em; }
+.pn-rail--player:has(.pn-stamina.is-low)::before { background: var(--warn); }
+.pn-rail--player:has(.pn-carry.is-full)::before { background: var(--bad); }
+.pn-stamina.is-low,
+.pn-carry.is-full { border-color: transparent; }
+
+/* Tool strip: shared deck, separators instead of six cards. */
+.pn-rail--tools {
+  bottom: calc(var(--u) * 0.85);
+  gap: 0;
+  padding: 0;
+  overflow: visible;
+}
+.pn-rail--tools::before { left: 0; right: 0; bottom: 0; height: 3px; }
+.pn-rail--tools .pn-hotbar-name {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.32em);
+  transform: translateX(-50%);
+  padding: 0.12em 0.5em;
+  background: rgba(8, 9, 9, 0.72);
+  white-space: nowrap;
+}
+.pn-rail--tools .pn-hotbar-row {
+  gap: 0;
+  padding: 0.22em;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.pn-rail--tools .pn-slot {
+  width: calc(var(--u) * 2.65);
+  height: calc(var(--u) * 2.55);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.pn-rail--tools .pn-slot + .pn-slot { border-left: 1px solid var(--line); }
+.pn-rail--tools .pn-slot.is-equipped { color: var(--acc-ink); background: var(--acc); box-shadow: none; }
+.pn-rail--tools .pn-slot.is-equipped .pn-slot-ic,
+.pn-rail--tools .pn-slot.is-equipped .pn-key { color: var(--acc-ink); }
+.pn-rail--tools .pn-slot-price { border-radius: 0; }
+
+/* Reticle feedback stays compact and does not grow into a centre-screen card. */
+.pn-prompt { top: calc(50% + var(--u) * 3.2); }
+.pn-prompt-row {
+  position: relative;
+  border: 0;
+  border-left: 3px solid var(--acc);
+  border-radius: 0;
+  background: rgba(12, 14, 14, 0.88);
+  box-shadow: 0 0.25em 0.7em rgba(0, 0, 0, 0.32);
+  padding: 0.3em 0.7em 0.3em 0.38em;
+}
+.pn-prompt.is-disabled .pn-prompt-row { border-left-color: var(--bad); }
+.pn-prompt-reason { border-radius: 0; background: rgba(12, 14, 14, 0.82); }
+.pn-msg { border-radius: 0; }
+.pn-hint {
+  width: min(calc(var(--u) * 34), 58vw);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.65em;
+  padding: 0.5em 0.75em 0.52em 0.58em;
+  border: 1px solid var(--line-2);
+  border-left: 3px solid var(--acc);
+  border-radius: 0;
+  background: rgba(13, 15, 15, 0.92);
+  box-shadow: 0 0.35em 1em rgba(0, 0, 0, 0.32);
+}
+.pn-hint-copy { min-width: 0; display: flex; flex-direction: column; gap: 0.18em; }
+.pn-hint-title {
+  color: var(--acc);
+  font-size: var(--fs-xs);
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.pn-hint-text { color: var(--ink); font-size: var(--fs-sm); line-height: 1.25; }
+.pn-hint-key { margin-left: 0.25em; }
+.pn-hint.is-on.is-step { animation: pn-guide-step 0.46s var(--spring); }
+
+/* Build console replaces lower gameplay rails and stays out of the centre. */
+.pn-rail--build {
+  left: calc(var(--u) * 0.9);
+  bottom: calc(var(--u) * 0.85);
+  transform: none;
+  width: min(29vw, calc(var(--u) * 28));
+  min-width: calc(var(--u) * 22);
+  padding: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'tabs' 'main' 'side' 'hints';
+  gap: 0;
+  overflow: hidden;
+}
+.pn-rail--build::before { left: 0; top: 0; bottom: 0; width: 3px; }
+.pn-rail--build .pn-build-tabs { gap: 0; border-bottom: 1px solid var(--line-2); }
+.pn-rail--build .pn-build-tab { flex: 1; justify-content: center; padding: 0.48em 0.4em; border-radius: 0; }
+.pn-rail--build .pn-build-tab + .pn-build-tab { border-left: 1px solid var(--line); }
+.pn-rail--build .pn-build-tab.is-active { color: var(--acc-ink); background: var(--acc); box-shadow: none; }
+.pn-rail--build .pn-build-main { padding: 0.6em 0.72em 0.5em; }
+.pn-rail--build .pn-build-ic { width: calc(var(--u) * 2.25); height: calc(var(--u) * 2.25); border-radius: 0; background: transparent; border: 1px solid var(--line-2); }
+.pn-rail--build .pn-build-rot { border-radius: 0; }
+.pn-rail--build .pn-build-side {
+  max-width: none;
+  padding: 0.45em 0.72em;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+  border-top: 1px solid var(--line);
+}
+.pn-rail--build .pn-build-hints { padding: 0.45em 0.72em 0.5em; }
+.pn-ui[data-mode='build'] .pn-rail--player,
+.pn-ui[data-mode='build'] .pn-rail--tools { display: none !important; }
+
+/* Aimed-machine and detector context own the lower-right corner. */
+.pn-rail--machine {
+  left: auto;
+  right: calc(var(--u) * 0.9);
+  top: auto;
+  bottom: calc(var(--u) * 0.85);
+  width: min(22vw, calc(var(--u) * 20));
+  transform: translateX(0.4em);
+  border-left: 1px solid var(--rail-line);
+  border-right: 3px solid var(--tip-accent);
+  border-radius: 0;
+  padding: 0.6em 0.72em 0.65em;
+}
+.pn-rail--machine::before { display: none; }
+.pn-tip.is-on { transform: none; }
+.pn-rail--machine .pn-pill { border-radius: 0; background: transparent; border-width: 0 0 0 2px; padding-left: 0.5em; }
+.pn-rail--detector {
+  right: calc(var(--u) * 0.9);
+  bottom: calc(var(--u) * 0.85);
+  width: min(19vw, calc(var(--u) * 17));
+  border-right: 3px solid var(--alarm);
+}
+.pn-rail--detector::before { display: none; }
+.pn-layer-hud:has(.pn-det.is-on) .pn-tip.is-on { bottom: calc(var(--u) * 8.2); }
+
+/* Notifications align with the economy rail. */
+.pn-toasts { left: calc(var(--u) * 0.9); top: calc(var(--u) * 6.35); width: min(21vw, calc(var(--u) * 19)); gap: 0.2em; }
+.pn-toast { border-radius: 0; background: rgba(14, 16, 16, 0.9); border-color: var(--line-2); border-left-width: 3px; box-shadow: 0 0.25em 0.7em rgba(0, 0, 0, 0.28); }
+.pn-banner { border-radius: 0; border-top-width: 2px; background: rgba(14, 16, 16, 0.94); }
+.pn-banner-ic { border-radius: 0; background: transparent; border: 0; }
+.pn-needlefx-glow { background: rgba(8, 9, 9, 0.8); }
+.pn-needlefx-rays { display: none; }
+.pn-needlefx-sparks i:nth-child(n + 7) { display: none; }
+.pn-needlefx-buff { border-radius: 0; }
+.pn-needlefx-needle { filter: none; }
+
+/* One panel language: square engineering frames and restrained internal sections. */
+.pn-screen { background: rgba(8, 9, 9, 0.72); }
+.pn-panel,
+.pn-tree {
+  border-radius: 2px;
+  border-color: var(--rail-line);
+  background: #151718;
+  box-shadow: 0 1em 3em rgba(0, 0, 0, 0.5);
+}
+.pn-panel-head,
+.pn-tree-head { border-left: 3px solid var(--acc); background: #181a1b; }
+.pn-panel-title,
+.pn-tree-title { letter-spacing: -0.015em; }
+.pn-balance,
+.pn-tree-wp,
+.pn-tree-avail,
+.pn-orders-done { border-radius: 0; background: transparent; }
+.pn-card,
+.pn-ocard,
+.pn-branch,
+.pn-tn-card,
+.pn-tree-detail,
+.pn-sum-needle,
+.pn-sum-stat,
+.pn-confirm-box {
+  border-radius: 2px;
+}
+.pn-card { background: #1c1e20; border-color: var(--line-2); }
+.pn-card-top { background: #17191a; box-shadow: inset 3px 0 0 color-mix(in srgb, var(--cat) 72%, transparent); }
+.pn-card-owned,
+.pn-stat { border-radius: 0; }
+.pn-card-lock { background: rgba(15, 17, 18, 0.93); }
+.pn-ocard { background: #1b1d1e; box-shadow: inset 3px 0 0 var(--acc); padding-left: 1em; }
+.pn-ocard-reward { border-top-style: solid; }
+.pn-ocard-hint { border-radius: 0; background: rgba(0, 0, 0, 0.18); border-left: 2px solid var(--line-3); }
+.pn-tree-view { background: #111314; }
+.pn-branch { background: rgba(255, 255, 255, 0.012); }
+.pn-branch-head { border-radius: 0; box-shadow: inset 3px 0 0 var(--bc); }
+.pn-tn-card { background: #1d1f20; }
+.pn-tree-detail { border-top: 1px solid var(--line-2); border-left: 3px solid var(--bc); }
+.pn-td-ic,
+.pn-td-kind,
+.pn-td-levels li,
+.pn-td-status,
+.pn-tn-cost,
+.pn-tn-lock,
+.pn-tn-check,
+.pn-tn-ext,
+.pn-tn-lv,
+.pn-tn-money { border-radius: 1px; }
+.pn-pause-side { background: #17191a; border-left: 3px solid var(--acc); }
+.pn-set-row { border-radius: 0; border-bottom: 1px solid transparent; }
+.pn-set-row:hover { background: rgba(255, 255, 255, 0.025); border-bottom-color: var(--line); }
+.pn-seg,
+.pn-seg-btn,
+.pn-toggle { border-radius: 2px; }
+.pn-range::before { content: ''; position: absolute; left: 0; top: 50%; width: var(--p); height: 0.3em; transform: translateY(-50%); background: var(--acc); pointer-events: none; }
+.pn-range input { position: relative; z-index: 1; background: rgba(255, 255, 255, 0.1); }
+.pn-ctp { background: rgba(8, 9, 9, 0.86); }
+.pn-logo-needle { filter: none; }
+
+/* Mechanical movement: rails seat into place with one short, weighted motion. */
+.pn-hud-main:not(.is-hidden) .pn-rail--economy { animation: pn-rail-in-left 0.42s var(--ease) both; }
+.pn-hud-main:not(.is-hidden) .pn-rail--mission { animation: pn-rail-in-right 0.46s var(--ease) both; }
+.pn-rail--tools.is-on { animation: pn-rail-in-up 0.36s var(--spring) both; }
+.pn-rail--player:has(.pn-player-row.is-on) { animation: pn-rail-in-left 0.32s var(--ease) both; }
+.pn-rail--build.is-on { animation: pn-rail-in-left 0.38s var(--spring) both; }
+.pn-rail--machine.is-on,
+.pn-rail--detector.is-on { animation: pn-rail-in-right 0.32s var(--ease) both; }
+
+@keyframes pn-rail-in-left {
+  from { opacity: 0; transform: translateX(-0.7em); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pn-rail-in-right {
+  from { opacity: 0; transform: translateX(0.7em); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pn-rail-in-up {
+  from { opacity: 0; transform: translate(-50%, 0.55em); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes pn-guide-step {
+  0% { opacity: 0; transform: translate(-50%, 0.7em); }
+  58% { opacity: 1; transform: translate(-50%, -0.08em); }
+  100% { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Compact resolutions: keep values and reasons, collapse decoration first. */
+@media (max-height: 720px) {
+  .pn-rail--economy { width: min(17vw, calc(var(--u) * 13)); }
+  .pn-rail--mission { width: min(20vw, calc(var(--u) * 15)); }
+  .pn-rail--player { width: min(21vw, calc(var(--u) * 16)); }
+  .pn-rail--tools .pn-slot { width: calc(var(--u) * 2.45); height: calc(var(--u) * 2.35); }
+  .pn-rail--build { width: min(34vw, calc(var(--u) * 26)); }
+  .pn-rail--machine { width: min(25vw, calc(var(--u) * 18)); }
+  .pn-tip-line:nth-child(n + 8) { display: none !important; }
+  .pn-toasts { width: min(25vw, calc(var(--u) * 18)); }
+  .pn-orders-list { gap: 0.45em; padding: 0.6em 0.75em 0.8em; }
+  .pn-ocard { gap: 0.35em; padding: 0.58em 0.7em 0.62em 0.85em; }
+}
+
+@media (max-height: 560px), (max-width: 980px) {
+  .pn-rail--economy { min-width: calc(var(--u) * 10.5); }
+  .pn-rail--economy .pn-res-label { display: none; }
+  .pn-rail--mission { width: calc(var(--u) * 13.4); }
+  .pn-rail--player { min-width: calc(var(--u) * 12); width: calc(var(--u) * 14); }
+  .pn-rail--tools .pn-slot { width: calc(var(--u) * 2.25); height: calc(var(--u) * 2.2); }
+  .pn-rail--tools .pn-hotbar-name { display: none; }
+  .pn-rail--player .pn-player-label { display: none; }
+  .pn-rail--build { width: min(42vw, calc(var(--u) * 24)); }
+  .pn-rail--build .pn-build-tab span:not(.pn-ic) { display: none; }
+  .pn-rail--machine { width: min(31vw, calc(var(--u) * 17)); }
+  .pn-banner { width: min(calc(var(--u) * 29), 58vw); }
+  .pn-hint { width: min(calc(var(--u) * 29), 62vw); }
+  .pn-hint-title { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pn-ui *, .pn-ui *::before, .pn-ui *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

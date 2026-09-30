@@ -348,6 +348,7 @@ export class Game implements UIContext {
     if (!GAMEPLAY_MODES.has(m) && wasGameplay) this.platform.gameplayStop();
     if (m !== 'build' && this.build?.active) this.build.exit();
     if (m === 'workTree') this.flags.add('workTreeOpened');
+    if (m === 'shop') this.flags.add('shopOpened');
     this.telemetry.onMode(m);
     if (m === 'orders') this.flags.add('ordersOpened');
     if (m === 'paused') { this.saveGame(true); this.audio.setPaused(true); }
@@ -526,7 +527,10 @@ export class Game implements UIContext {
     let info: BuildingInfo | null = null;
     if (aim.kind === 'building' && aim.building) {
       const b = aim.building;
-      if (aim.distance <= 10) info = sim.buildingInfo(b.id);
+      if (aim.distance <= 10) {
+        info = sim.buildingInfo(b.id);
+        this.flags.add('machineInspected');
+      }
       const opt = b.interaction(sim);
       const range = opt?.kind === 'deposit' && quickDump ? sim.stat('tool.bucket.dumpRange') : interactRange;
       if (opt && aim.distance <= range) prompt = { key: 'E', text: opt.label, enabled: opt.enabled, reason: opt.reason };
@@ -734,7 +738,9 @@ export class Game implements UIContext {
   getDetector(): DetectorReading | null { return this.detector; }
   getFps(): number { return this.fps; }
   keyLabel(code: string): string { return this.input.label(code); }
-  getHint(): { text: string; key?: string } | null { return this.hint ? { text: this.hint.text, key: this.hint.key } : null; }
+  getHint(): { id: string; title: string; text: string; key?: string } | null {
+    return this.hint ? { id: this.hint.id, title: this.hint.title, text: this.hint.text, key: this.hint.key } : null;
+  }
   isTouchOnly(): boolean { return this.platform.isTouchOnlyDevice(); }
   getWelcomeBack(): WelcomeBackInfo | null { return this.welcome; }
   getAnalyticsConsent(): ConsentView & { policyUrl: string | null } {

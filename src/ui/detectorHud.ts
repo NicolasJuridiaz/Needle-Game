@@ -22,7 +22,7 @@ export class DetectorHud implements UIPart {
   private angle = NaN;
 
   constructor(private readonly env: PartEnv, parent: HTMLElement) {
-    const el = (this.el = h('div', 'pn-det', parent));
+    const el = (this.el = h('div', 'pn-det pn-rail pn-rail--detector', parent));
     this.visible = new ClassSlot(el, 'is-on');
     const head = h('div', 'pn-det-head', el);
     head.innerHTML = `<span class="pn-det-ic">${icon('detector')}</span><span class="pn-det-name">Detector</span>`;
@@ -52,7 +52,7 @@ export class DetectorHud implements UIPart {
     const next = signal ? 'signal' : r.tooDeep ? 'deep' : 'none';
     if (next !== this.mode) {
       this.mode = next;
-      this.el.className = `pn-det is-on is-${next}`;
+      this.el.className = `pn-det pn-rail pn-rail--detector is-on is-${next}`;
       if (next === 'deep') { this.state.set('TOO DEEP'); this.sub.set('A needle is buried deeper than your detector can sense'); }
       else if (next === 'none') { this.state.set('No signal'); this.sub.set('Sweep over the stack and listen for beeps'); }
       else this.sub.set('');
